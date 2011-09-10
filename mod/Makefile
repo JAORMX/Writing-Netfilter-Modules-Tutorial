@@ -1,6 +1,6 @@
 MODULES_DIR := /lib/modules/$(shell uname -r)
 KERNEL_DIR := ${MODULES_DIR}/build
-EXTRA_CFLAGS := -I$(src)
+EXTRA_CFLAGS := -I$(src)/../include
 
 obj-m += xt_ipaddr.o
 

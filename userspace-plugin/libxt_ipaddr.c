@@ -5,8 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../include/xt_ipaddr.h"
-#include "../include/libxt_ipaddr.h"
+#include "xt_ipaddr.h"
+#include "libxt_ipaddr.h"
 
 
 static const struct option ipaddr_mt_opts[] = {

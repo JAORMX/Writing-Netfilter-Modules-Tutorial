@@ -4,7 +4,7 @@
 #include <linux/skbuff.h>
 #include <linux/module.h>
 
-#include "../include/xt_ipaddr.h"
+#include "xt_ipaddr.h"
 
 /*
 static struct xt_match ipaddr_mt6_reg __read_mostly = {

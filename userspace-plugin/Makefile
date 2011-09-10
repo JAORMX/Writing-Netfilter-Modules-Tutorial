@@ -1,5 +1,6 @@
 # Make libxt_ipaddr.so
-CFLAGS = -O2 -Wall
+IDIR =../include
+CFLAGS = -O2 -Wall -I$(IDIR)
 lib%.so: lib%.o
 	gcc -shared -o $@ $^;
 lib%.o: lib%.c
