@@ -129,3 +129,4 @@ MODULE_AUTHOR("Juan Antonio Osorio <jaosorior@gmail.com>");
 MODULE_DESCRIPTION("Xtables: Match source/destination address");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("ipt_ipaddr");
+MODULE_ALIAS("ip6t_ipaddr");
