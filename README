@@ -14,7 +14,7 @@ It also refers to corrections made to the book.
 * 	cp libxt_ipaddr.so /var/lib/iptables/
 *
 * You can test it with:
-* 	iptables -m -ipaddr -h
+* 	iptables -m ipaddr -h
 * 	iptables -A INPUT -m ipaddr --ipsrc 127.0.0.1;
 * You can then ping yourself and verify that it works checking the kernel messages
 * (eg using dmesg).
