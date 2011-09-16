@@ -1,7 +1,10 @@
 This repository refers to the code described in the book Writing Netfilter Modules
 by Jan Engelhardt and Nicolas Bouliane.
+It also refers to corrections made to the book.
 
 * IMPORTANT
+* The corrections to the book are not finished.
+* 
 * Sounds obvious, but don't forget to load the ip_tables module before loading
 * the xt_ipaddr module.
 *
