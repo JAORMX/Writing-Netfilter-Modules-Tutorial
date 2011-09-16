@@ -1,0 +1,3787 @@
+%% LyX 2.0.1 created this file.  For more info, see http://www.lyx.org/.
+%% Do not edit unless you really know what you are doing.
+%% Ozznote = I really don't know what I'm doing... usually I don't work with a Lyx
+%%     generated document
+\documentclass[12pt,english]{article}
+\usepackage{lmodern}
+\renewcommand{\sfdefault}{lmss}
+\renewcommand{\ttdefault}{lmtt}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper]{geometry}
+\geometry{verbose,tmargin=2cm,bmargin=2cm,lmargin=2cm,rmargin=2cm}
+\setcounter{tocdepth}{1}
+\usepackage{color}
+\definecolor{note_fontcolor}{rgb}{0.80078125, 0.80078125, 0.80078125}
+\usepackage{babel}
+\usepackage{textcomp}
+\usepackage{url}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{makeidx}
+\makeindex
+\usepackage[numbers]{natbib}
+\usepackage[unicode=true,pdfusetitle,
+ bookmarks=true,bookmarksnumbered=false,bookmarksopen=false,
+ breaklinks=true,pdfborder={0 0 0},backref=false,colorlinks=false]
+ {hyperref}
+
+\makeatletter
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LyX specific LaTeX commands.
+\newcommand{\noun}[1]{\textsc{#1}}
+%% Because html converters don't know tabularnewline
+\providecommand{\tabularnewline}{\\}
+%% The greyedout annotation environment
+\newenvironment{lyxgreyedout}
+  {\textcolor{note_fontcolor}\bgroup\ignorespaces}
+  {\ignorespacesafterend\egroup}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Textclass specific LaTeX commands.
+\newenvironment{lyxcode}
+{\par\begin{list}{}{
+\setlength{\rightmargin}{\leftmargin}
+\setlength{\listparindent}{0pt}% needed for AMS classes
+\raggedright
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\normalfont\ttfamily}%
+ \item[]}
+{\end{list}}
+
+\makeatother
+
+\begin{document}
+
+\title{\vfill{}
+Writing Netfilter modules
+\\ Modified Version
+}
+
+
+\author{\noun{Jan Engelhardt, Nicolas Bouliane}}
+
+
+\date{rev.\ September 15, 2011}
+
+\maketitle
+The Netfilter\slash{}Xtables\slash{}iptables framework gives us
+the possibility to add features. To do so, we write kernel modules
+that register against this framework. Also, depending on the feature's
+category, we write an iptables userspace module. By writing your new
+extension, you can match, mangle, track and give faith to a given
+packet or complete flows of interrelated connections. In fact, you
+can do almost everything you want in this world. Beware that a little
+error in a kernel module can crash the computer.
+
+We will explain the skeletal structures of Xtables and Netfilter modules
+with complete code examples and by this way, hope to make the interaction
+with the framework a little easier to understand. We assume you already
+know a bit about iptables and that you do have C programming skills.\vfill{}
+
+
+\noindent \begin{flushleft}
+\textbf{Copyright © 2005 Nicolas Bouliane <acidfu (at) people.netfilter.org>,}\\
+\textbf{Copyright © 2008--2011 Jan Engelhardt <jengelh (at) medozas.de>,}
+\\ \textbf{Revision by Juan Antonio Osorio Robles <jaosorior (at) gmail.com>}
+\par\end{flushleft}
+
+\textbf{This work is made available under the Creative Commons Attribution-Non\-com\-mer\-cial-Share\-alike
+3.0 (CC-BY-NC-SA) license. See \url{http://creativecommons.org/licenses/by-nc-sa/3.0/}
+for details. (Alternate arrangements can be made with the copyright
+holder(s).)}
+
+\textbf{Additionally, modifications to this work must clearly be indicated
+as such, and the title page needs to carry the words ``Modified Version''
+if any such modifications have been made, unless the release was done
+by the designated maintainer(s). The Maintainers are members of the
+Netfilter Core Team, and any person(s) appointed as maintainer(s)
+by the coreteam.}
+
+\clearpage{}
+
+\bigskip{}
+
+
+
+\subsection*{About the authors}
+
+Nicolas has been using Linux since 1998. He is the co-author of the
+Netfilter geoip module. He is currently working for AirJaldi and his
+current focus is to empower communities through wireless technologies
+using free software. He wrote the original ``How to write your own
+iptables module'' in February 2005.
+
+Jan is a consultant for systems and network administration with a
+strong focus on Linux-based environments. He uses Linux since fall
+1999, and is involved in kernel development since 2003. His latest
+significant activities are in the field of firewalling with Netfilter
+and Xtables. Nicolas's article has been extensively rewritten and
+extended by Jan in 2008, up to a book's size.
+
+
+\subsection*{Acknowledgments}
+
+I (Jan) would like to thank Nicolas for the original version of this
+document. I like to pass on the knowledge, but had hesitated before
+to write it down all myself, and so, Nicolas's earlier version inspired
+me to update and extend it.
+
+\begin{flushright}
+Jan Engelhardt, 2008-January-08
+\par\end{flushright}
+
+
+\subsection*{State of the book}
+
+Two sections are incomplete, these are sections~\ref{sub:xttarget-checksum}
+and \ref{sec:cthelper}. Improvements are welcome.
+
+\vfill{}
+
+
+\noindent This book is designed for, and made available in ISO A4
+format, for the simple reason that most regular printed books have
+anything \textit{but} a standard size.
+
+\clearpage{}\tableofcontents{}\clearpage{}
+
+
+\part{Xtables}
+
+Xtables is about the table-based firewalling that you most likely
+know from running the \textsf{iptables}(8) command. In this part,
+the structure of modules usable with iptables will be described.
+
+This version of the book focuses on the Netfilter API as found in
+Linux 2.6.35--2.6.38.
+
+For iptables, at least version 1.4.3 is needed, because it contains
+the necessary initial infrastructure to support external (out-of-tree)
+iptables extensions. This book will only concentrate on recent API
+version(s) only however, which is \textsf{libxtables.so.4} (starting
+from iptables 1.4.6) as of this writing. It is deemed that upgrading
+iptables is much easier than to upgrade the kernel. Since iptables
+1.4.2, a lot of code has been moved into a shared library, whose ``.so-version''
+basically indicates the API versions supported. This API version is
+decoupled from the iptables release version.
+
+\medskip{}
+
+
+Jan released a new package called \textsf{Xtables-addons} at the end
+of January 2008 that replaces the old \index{patch-o-matic@\textsf{patch-o-matic}}\textsf{patch-o-matic}(\textsf{\nobreakdash-ng})
+where you can easily add new extensions without having to bother about
+the build infrastructure complexities or horrid patching strategies.
+It also provides API compatibility glue code so that you can write
+extensions using (a slight modification of) the latest kernel API
+and get it running on older kernels. Currently, Xtables-addons has
+glue code to provide backwards compatibility down to 2.6.17, which
+is a coverage of 4½ years to date.
+
+This book covers a substantial amount of module code. If you would
+like to get started with pre-existing code instead of trying to write
+your module from scratch, get ahold of the Xtables-addons package,
+or a clone of its git repository. The repository also has a branch
+``demos'' which contains the sample module \textsf{xt\_ipaddr} which
+is not included in the normal tarball.
+
+See \url{http://xtables-addons.sf.net/} for details and sources.
+
+
+\section{Nomenclature}
+
+\index{x_tables@\textsf{x\_tables}}\textsf{x\_tables} refers to the
+kernel module that provides the generic, (mostly) protocol-independent
+table-based firewalling used in Linux, and \index{ip_tables@\textsf{ip\_tables}}\textsf{ip\_tables},
+\index{ip6_tables@\textsf{ip6\_tables}}\textsf{ip6\_tables}, \index{arp_tables@\textsf{arp\_tables}}\textsf{arp\_tables}
+and \index{ebtables@\textsf{ebtables}}\textsf{ebtables} are the kernel
+modules providing family-specific tables for the \textsf{iptables},
+\textsf{ip6tables}, \textsf{arptables} and \textsf{ebtables} tools.
+
+By convention, names of Xtables matches are always lower-case, and
+names of Xtables targets are upper-case. This is not a hard rule,
+though. In fact, Ebtables used to use lower-case target names, e.\,g.\ \textsf{mark\_m}
+for the match, \textsf{mark} for the target. The choice to go for
+upper-casing, or using suffixes, is largely a historic decision for
+(now-)historic reasons, and may limitations have been lifted since
+then, and in fact, for new modules, it is requested that their filename
+be lowercase to avoid clashes on case-insensitive filesystems.
+
+Xtables module names are prefixed with \index{xt_@\textsf{xt\_}}\textsf{xt\_},
+forming, for example, \textsf{xt\_connmark} for the connmark match.
+ip, ip6, arp and eb table modules traditionally used distinct prefixes,
+according to their subsystem. They were \index{ipt_@\textsf{ipt\_}}\textsf{ipt\_},
+\index{ip6t_@\textsf{ip6t\_}}\textsf{ip6t\_}, \index{arpt_@\textsf{arpt\_}}\textsf{arpt\_}
+and \index{ebt_@\textsf{ebt\_}}\textsf{ebt\_}, respectively. Use
+of these is discouraged and is to be avoided for new modules. Today,
+these prefixes only survive as aids for directed kernel module loading
+in module aliases (similar to ``net-pf-2-proto-132'' and ``net-pf-10-proto-132''
+for sctp.ko).
+\begin{lyxcode}
+\index{MODULE_ALIAS@\texttt{MODULE\_ALIAS}}MODULE\_ALIAS(\textquotedbl{}ipt\_\textit{mymatch}\textquotedbl{});~\\
+MODULE\_ALIAS(\textquotedbl{}ip6t\_\textit{mymatch}\textquotedbl{});~\\
+MODULE\_ALIAS(\textquotedbl{}arpt\_\textit{mymatch}\textquotedbl{});~\\
+MODULE\_ALIAS(\textquotedbl{}ebt\_\textit{mymatch}\textquotedbl{});
+\end{lyxcode}
+Add lines like these to the source code of your module~--- ideally
+only those which you support. If your module does not match on ARP
+packets for example, do not add an \textsf{arpt\_} alias. Of course,
+use upper-case as mentioned earlier for targets.
+
+Filenames are usually set forth by their logical module name, i.\,e.\ \texttt{xt\_}\texttt{\textit{mymatch}}\texttt{.c}
+. Originally, each match and each target was put into its own source
+file, but since the module overhead is not negligible after all, a
+number of extensions are bundled into one module. Examples from Linux
+2.6.37 are \texttt{xt\_mark.c}, \texttt{xt\_connmark.c}, \texttt{xt\_HL.c},
+\texttt{xt\_DSCP.c}. Reasons for this are their close nature, reducing
+compile time, reducing memory footprint on modular kernels, and the
+avoidance of filenames that only differ in case, which are known to
+be a trouble on case-insensitive filesystems. As long as it has the
+appropriate \texttt{MODULE\_ALIAS}es to ensure it can be loaded~---
+if it is not already statically compiled into the kernel~--- there
+is no hard requirement on the filename.
+
+As far as userspace is concerned, iptables modules use \index{libxt_@\textsf{libxt\_}}\textsf{libxt\_}
+as prefix, and modules must adhere to it because both the Makefiles
+and the iptables codebase responsible for loading plugins have it
+hardcoded on it.
+
+
+\section{\index{match extension}Match extensions}
+
+The duty of a match module is to inspect each packet received and
+to decide whether it matches or not, according to our criteria. The
+criteria can be quite anything you can think of, though there are
+limits. The most obvious matches are of course match by source or
+destination address, which is done inside Xtables rather than a separate
+match, and source and/or destination port for TCP/UDP (and/or others),
+which on the other hand, is actually done inside a match. (This is
+because TCP is layer~4 already, while the IP address is with layer~3.)
+There are also advanced modules, such as \textsf{xt\_connlimit} to
+match on concurrent number of connections. Combined with exotics such
+as \textsf{xt\_time} (to match on the system time), daytime-based
+connection limits could be enforced, for example. Many matches are
+simple piece of code, others require a bit more code for their housekeeping
+(such as \textsf{xt\_hashlimit}).
+
+A match generally may not modify much~--- as you will later see from
+the function prototypes, the \texttt{skb} is marked \index{const@\textsf{const}}\texttt{const},
+as are other variables. Modifying any of this data should only be
+done in targets, which are discussed later, but again, there are exceptions.
+In fact, the boundary between match and target is fading a bit.
+
+In this chapter, we will be writing a simple IP address match (even
+if Xtables does a better job at it) called ``\textsf{xt\_ipaddr}''.
+
+
+\subsection{\index{header file}Header file\label{sub:xtmatch-header}}
+
+The header file for our match is where you describe the binary interface
+between userspace and the kernel module. We usually begin with the
+header file because it is the first thing that comes to mind~---
+when you ask yourself ``what do I actually want to match (against)?'',
+and what information needs to be conveyed to the kernel.
+
+As far as our \textsf{xt\_ipaddr} sample module is concerned, we want
+to match on source and/or destination address, so we need storage
+for these, and also a flags field with which we indicate whether to
+consider source/destination address in the match, or not, and whether
+(or not) to invert the result. So we have:
+\begin{lyxcode}
+\textbf{\#ifndef~\_LINUX\_NETFILTER\_XT\_IPADDR\_H}~\\
+\textbf{\#define~\_LINUX\_NETFILTER\_XT\_IPADDR\_H~1}~\\
+~\\
+\textbf{enum}~\{~\\
+~~~~~~~~XT\_IPADDR\_SRC~~~~~=~1~<\textcompwordmark{}<~0,~\\
+~~~~~~~~XT\_IPADDR\_DST~~~~~=~1~<\textcompwordmark{}<~1,~\\
+~~~~~~~~XT\_IPADDR\_SRC\_INV~=~1~<\textcompwordmark{}<~2,~\\
+~~~~~~~~XT\_IPADDR\_DST\_INV~=~1~<\textcompwordmark{}<~3,~\\
+\};
+\end{lyxcode}
+These are the constant names for the \texttt{flags} field. We use
+\texttt{1~<\textcompwordmark{}<~n} here because that is a bit less
+error prone when initially typing the raw values like \texttt{0x04},
+\texttt{0x08}, \texttt{0x10}, like accidentally writing a number which
+has more than one bit set.
+
+Alternatively, we could have put the invert flags into a separate
+variable. Such is useful when the match flags are the same as the
+invert flags. The main code would then use \texttt{(invert\_flags~\&
+XT\_IPADDR\_SRC)} instead of \texttt{(flags~\& XT\_IPADDR\_SRC\_INV)}
+to test for inversion, for example. We do not do this in our example
+however, since flags and invert flags fit into the 8\nobreakdash-bit
+\texttt{flags} member, and a split would otherwise take up 16.
+
+You should not use types which do not have a fixed width for the parameter
+exchange~--- \texttt{short}, \texttt{int} and \texttt{long} are all
+taboo! This is because \texttt{long} for example has a different size
+in 32- and \index{64-bit@64\nobreakdash-bit}64\nobreakdash-bit environments.
+On x86, \texttt{long} is 4 bytes, but on x86\_64, it is 8 bytes. If
+you run a 32-bit \textsf{iptables} binary with a 64\nobreakdash-bit
+kernel~--- and this is very common in the sparc64 world~---, problems
+can arise because the size of the types is not the same on both ends.
+Instead, use the types listed in table~\ref{tab:fixed-types}.
+
+\begin{table}[h]
+\begin{centering}
+\begin{tabular}{|c||c|c|c|c|}
+\hline 
+\index{types} & \texttt{char} & \texttt{short} & \texttt{int}/\texttt{long} & \texttt{long}/\texttt{long long}\tabularnewline
+\hline 
+\hline 
+Unsigned & \texttt{\index{__u8@\texttt{\_\_u8}}\_\_u8} & \texttt{\index{__u16@\texttt{\_\_u16}}\_\_u16} & \texttt{\index{__u32@\texttt{\_\_u32}}\_\_u32} & \texttt{\index{aligned_u64@\texttt{aligned\_u64}}aligned\_u64}\tabularnewline
+\hline 
+Signed & \texttt{\index{__s8@\texttt{\_\_s8}}\_\_s8} & \texttt{\index{__s16@\texttt{\_\_s16}}\_\_s16} & \texttt{\index{__s32@\texttt{\_\_s32}}\_\_s32} & \texttt{\index{__s64@\texttt{\_\_s64}}\_\_s64 \_\_attribute\_\_((aligned(8)))}\tabularnewline
+\hline 
+Unsigned little-endian & \texttt{\_\_u8} & \texttt{\index{__le16@\texttt{\_\_le16}}\_\_le16} & \texttt{\index{__le32@\texttt{\_\_le32}}\_\_le32} & \texttt{\index{aligned_le64@\texttt{aligned\_le64}}aligned\_le64}\tabularnewline
+\hline 
+Unsigned big-endian & \texttt{\_\_u8} & \texttt{\index{__be16@\texttt{\_\_be16}}\_\_be16} & \texttt{\index{__be32@\texttt{\_\_be32}}\_\_be32} & \texttt{\index{aligned_be64@\texttt{aligned\_be64}}aligned\_be64}\tabularnewline
+\hline 
+\end{tabular}
+\par\end{centering}
+
+\caption{\label{tab:fixed-types}Fixed types}
+\end{table}
+
+
+Note to self: Upcoming change will use \texttt{\_\_aligned\_u64} (with
+two leading underscores), \texttt{\_\_aligned\_be64} and \texttt{\_\_aligned\_le64}.,
+but has not been merged yet as of v2.6.36-rc3-1437-ga00eac0.
+
+\texttt{char} is defined to be of size~1, so it is safe to use. For
+clarity, use \texttt{char} for characters and strings, and \texttt{\_\_u8}
+(or \texttt{\_\_s8}) for numbers. 64\nobreakdash-bit quantities must
+be specially aligned, for consistency please do not use \texttt{\index{__le64@\texttt{\_\_le64}}\_\_le64}
+or \texttt{\index{__be64@\texttt{\_\_be64}}\_\_be64}; for details
+see section~\ref{sub:xttricks-align}. There is indeed no \texttt{aligned\_s64}.
+
+Note that \texttt{\_\_le{*}} and \texttt{\_\_be{*}} are only annotations
+used in conjunction with sparse to flag up possible coding errors.
+For the C compiler they are equivalent to \texttt{\_\_u{*}}, and you
+still need to do \index{byteswapping}byteswapping using the appropriate
+functions (see appendix~\ref{sec:function-reference}).
+
+Try to arrange the members in the struct so that it does not leave
+any \index{padding}padding holes; this will benefit memory economy.
+\begin{lyxcode}
+\textbf{struct}~xt\_ipaddr\_mtinfo~\{~\\
+~~~~~~~~\textbf{union}~nf\_inet\_addr~src,~dst;~\\
+~~~~~~~~\_\_u8~flags;~\\
+\};~\\
+~\\
+\textbf{\#endif}~\textbf{/{*}~}\textit{\_LINUX\_NETFILTER\_XT\_IPADDR\_H}\textbf{~{*}/}
+\end{lyxcode}
+\texttt{\index{union nf_inet_addr@\texttt{union nf\_inet\_addr}}union
+nf\_inet\_addr} is a compound introduced in Linux 2.6.25 that can
+store either an IPv4 or IPv6 address (in various types actually; \texttt{ip}
+is layout-compatible to \texttt{in} and \texttt{ip6} is compatible
+to \texttt{in6}). It is defined in \texttt{\index{linux/netfilter.h@\textit{linux/netfilter.h}}<linux\slash{}netfilter.h>},
+and for \texttt{\index{struct in_addr@\texttt{struct in\_addr}}struct
+in\_addr} and \texttt{\index{struct in6_addr@\texttt{struct in6\_addr}}struct
+in6\_addr} to work, you need to include \texttt{\index{linux/ip.h@\textit{linux/ip.h}}<linux\slash{}ip.h>}
+and \texttt{\index{linux/ipv6.h@\textit{linux/ipv6.h}}<linux\slash{}ipv6.h>}
+in kernel-space, or \texttt{\index{netinet/in.h@\textit{netinet/in.h}}<netinet\slash{}in.h>}
+in userspace, respectively. Xtables-addons provides necessary glue
+code to make it work on older kernels too.
+\begin{lyxcode}
+\textbf{union}~nf\_inet\_addr~\{~\\
+~~~~~~~~\_\_be32~ip;~\\
+~~~~~~~~\_\_be32~ip6\textbf{{[}}4\textbf{{]}};~\\
+~~~~~~~~\textbf{struct}~in\_addr~in;~\\
+~~~~~~~~\textbf{struct}~in6\_addr~in6;
+
+\};
+\end{lyxcode}
+What address type it actually stored (i.\,e.\ how the union should
+be interpreted) is passed on elsewhere in the Xtables framework. For
+example, \textsf{ip6tables} will always fill \texttt{src} and \texttt{dst}
+with IPv6 addresses and only ever calls the \texttt{\index{NFPROTO_IPV6@\texttt{NFPROTO\_IPV6}}NFPROTO\_IPV6}
+version of the \textsf{xt\_ipaddr} match. This is also why we will
+have two separate match functions, one for IPv4 (\texttt{ipaddr\_mt4})
+and one for IPv6 (\texttt{ipaddr\_mt6}). Of course you could also
+record the address family inside the struct and instead combine our
+two match functions. But you would not gain anything from it~---
+usually you cannot combine any code because the IP header is of different
+type (\texttt{\index{struct iphdr@\texttt{struct iphdr}}struct iphdr}
+and \texttt{\index{struct ipv6hdr@\texttt{struct ipv6hdr}}struct
+ipv6hdr}), requiring just as much C code.
+
+
+\subsection{Structural definition\label{sub:xtmatch-struct}}
+
+At first, let us look at some basic structures. The \texttt{xt\_match}
+structure is defined in \texttt{\index{linux/netfilter/x_tables.h@\textit{linux/netfilter/x\_tables.h}}<linux\slash{}netfilter\slash{}x\_tables.h>}.
+Fields that are not of interest (mostly internal fields like the linked
+list fields) have been left out here.
+\begin{lyxcode}
+\textbf{\index{struct xt_action_param@\texttt{struct xt\_action\_param}}struct}~xt\_action\_param~\{~\\
+~~~~~~~~\textbf{const~struct}~xt\_match~\textbf{{*}}match;~\\
+~~~~~~~~\textbf{const~void~{*}}matchinfo;~\\
+~~~~~~~~\textbf{const~struct}~net\_device~\textbf{{*}}in,~\textbf{{*}}out;~\\
+~~~~~~~~\textbf{int}~fragoff;~\\
+~~~~~~~~\textbf{unsigned~int}~thoff;~\\
+~~~~~~~~\textbf{unsigned~int}~hook;~\\
+~~~~~~~~\textbf{uint8\_t}~family;~\\
+~~~~~~~~\textbf{bool~}hotdrop;~\\
+\};~\\
+~\\
+\textbf{\index{struct xt_mtchk_param@\texttt{struct xt\_mtchk\_param}}struct}~xt\_mtchk\_param~\{~\\
+~~~~~~~~\textbf{const~char~{*}}table;~\\
+~~~~~~~~\textbf{const~void~{*}}entryinfo;~\\
+~~~~~~~~\textbf{const~struct}~xt\_match~\textbf{{*}}match;~\\
+~~~~~~~~\textbf{void~{*}}matchinfo;~\\
+~~~~~~~~\textbf{unsigned~int}~hook\_mask;~\\
+~~~~~~~~\textbf{uint8\_t}~family;~\\
+\};~\\
+~\\
+\textbf{\index{struct xt_mtdtor_param@\texttt{struct xt\_mtdtor\_param}}struct}~xt\_mtdtor\_param~\{~\\
+~~~~~~~~\textbf{const~struct}~xt\_match~\textbf{{*}}match;~\\
+~~~~~~~~\textbf{void~{*}}matchinfo;~\\
+~~~~~~~~\textbf{uint8\_t}~family;~\\
+\};~\\
+~\\
+\textbf{\index{struct xt_match@\texttt{struct xt\_match}}struct}~xt\_match~\{~\\
+~~~~~~~~\textbf{const~char}~name\textbf{{[}}\index{XT_EXTENSION_MAXNAMELEN@\texttt{XT\_EXTENSION\_MAXNAMELEN}}XT\_EXTENSION\_MAXNAMELEN\textbf{{]}};~\\
+~~~~~~~~\textbf{uint8\_t}~revision;~\\
+~~~~~~~~\textbf{unsigned~short}~family;~\\
+~~~~~~~~\textbf{const~char~{*}}table;~\\
+~~~~~~~~\textbf{unsigned~int}~hooks;~\\
+~~~~~~~~\textbf{unsigned~short}~proto;~\\
+~\\
+~~~~~~~~\textbf{bool~({*}}match\textbf{)}(\textbf{const~struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~~~~~~~~~~~~~~~~~~~\textbf{struct}~xt\_action\_param~\textbf{{*}});~\\
+~~~~~~~~\textbf{int~({*}}checkentry\textbf{)}(\textbf{const~struct}~xt\_mtchk\_param~\textbf{{*}});~\\
+~~~~~~~~\textbf{void~({*}}destroy\textbf{)}(\textbf{const~struct}~xt\_mtdtor\_param~\textbf{{*}});~\\
+~\\
+~~~~~~~~\textbf{struct}~module~\textbf{{*}}me;~\\
+\};
+\end{lyxcode}
+The number of arguments to the functions has grown over time, as have
+the numbers of extensions, and it became a lengthy job to update all
+of them whenever an API change was required. Moreover, many extensions
+do not even use all parameters. Linux 2.6.28(-rc1) thus introduced
+the parameter structures named \texttt{struct xt\_{*}\_param} that
+collect all of the arguments. The skb remains outside the structure
+for the compiler's convenience of applying its optimizations. Xtables-addons
+uses the same function signatures here.
+
+The types for earlier Linux kernels are numerous of course, but let's
+just look at the last types that were used directly before 2.6.28:
+\begin{lyxcode}
+\textbf{bool~({*}}match\textbf{)}(\textbf{const~struct}~sk\_buff~\textbf{{*}}skb,~\textbf{const~struct}~net\_device~\textbf{{*}}in,~\\
+~~~~~~~~~~~~~~\textbf{const~struct}~net\_device~\textbf{{*}}out,~\textbf{const~struct}~xt\_match~\textbf{{*}}match,~\\
+~~~~~~~~~~~~~~\textbf{const~void~{*}}matchinfo,~\textbf{int}~offset,~\textbf{unsigned~int}~protoff,~\\
+~~~~~~~~~~~~~~\textbf{bool~{*}}hotdrop);~\\
+\textbf{bool~({*}}checkentry\textbf{)}(\textbf{const~char~{*}}table,~\textbf{const~void~{*}}entry,~\\
+~~~~~~~~~~~~~~~~~~~\textbf{const~struct}~xt\_match~\textbf{{*}}match,~\textbf{void~{*}}matchinfo,~\\
+~~~~~~~~~~~~~~~~~~~\textbf{unsigned~int}~hook\_mask);~\\
+\textbf{void~({*}}destroy\textbf{)}(\textbf{const~struct}~xt\_match~\textbf{{*}}match,~\textbf{void~{*}}matchinfo);
+\end{lyxcode}
+Much has changed since then; checkentry also returns \texttt{int}
+as of 2.6.35, just to name an important change.
+
+
+\subsection{Module initialization\label{sub:xtmatch-init}}
+
+We initialize the common fields in the \texttt{xt\_match} structure.
+It must not be marked const, because it will be added to the chain
+of a linked list and hence needs to be modifiable. But we will mark
+it \texttt{\index{__read_mostly@\texttt{\_\_read\_mostly}}\_\_read\_mostly},
+which is yet another of those magic annotation tags that will trigger
+the linker to specially layout symbols, which actually helps optimizing
+cachelining\citet{ReadMostly}.
+\begin{lyxcode}
+\textbf{static~struct}~xt\_match~ipaddr\_mt4\_reg~\_\_read\_mostly~=~\{
+\end{lyxcode}
+\texttt{name} is the name of the match that you define. \texttt{\index{XT_EXTENSION_MAXNAMELEN@\texttt{XT\_EXTENSION\_MAXNAMELEN}}XT\_EXTENSION\_MAXNAMELEN}
+is currently~\texttt{29}, so subtracting one for the trailing \texttt{'\textbackslash{}0'}
+leaves 28 chars for the name of your match, which should be enough.
+\texttt{\index{revision@\texttt{revision}}revision} is an integer
+that can be used to denote a ``version'' or feature set of a given
+match. For example, the \textsf{xt\_multiport} match, which is used
+to efficiently match up to 15 TCP or UDP ports at a time, supported
+only 15 source or 15 destination ports in revision~0. Supporting
+15 source \textit{and} 15 destination required a change of the private
+structure, so revision~1 had to be introduced.
+
+Then comes \texttt{\index{family@\texttt{family}}family}, which specifies
+the type of family this \texttt{xt\_match} structure handles. A ``family''
+does not map to a specific layer in the OSI protocol stack as can
+be seen, but rather for a type of processing. \textsf{ip\_tables}
+will only search the Xtables core for extensions with \texttt{NFPROTO\_IPV4}
+or \texttt{NFPROTO\_UNSPEC}; \textsf{ip6\_tables} only \texttt{NFPROTO\_IPV6}
+and \texttt{NFPROTO\_UNSPEC}; etc.\ when inserting a new rule. Possible
+values are shown in table~\ref{tab:families}.
+
+\begin{center}
+\begin{table}[h]
+\begin{centering}
+\begin{tabular}{|c|c|c|}
+\hline 
+Constant & Considered by & Value for kernels <~2.6.28\tabularnewline
+\hline 
+\hline 
+\texttt{\index{NFPROTO_UNSPEC@\texttt{NFPROTO\_UNSPEC}}NFPROTO\_UNSPEC} & (all) & none\tabularnewline
+\hline 
+\texttt{\index{NFPROTO_IPV4@\texttt{NFPROTO\_IPV4}}NFPROTO\_IPV4} & ip\_tables & \texttt{\index{PF_INET@\texttt{PF\_INET}}PF\_INET}\tabularnewline
+\hline 
+\texttt{\index{NFPROTO_IPV6@\texttt{NFPROTO\_IPV6}}NFPROTO\_IPV6} & ip6\_tables & \texttt{\index{PF_INET6@\texttt{PF\_INET6}}PF\_INET6}\tabularnewline
+\hline 
+\texttt{\index{NFPROTO_ARP@\texttt{NFPROTO\_ARP}}NFPROTO\_ARP} & arp\_tables & \texttt{\index{NF_ARP@\texttt{NF\_ARP}}NF\_ARP}\tabularnewline
+\hline 
+\texttt{\index{NFPROTO_BRIDGE@\texttt{NFPROTO\_BRIDGE}}NFPROTO\_BRIDGE} & ebtables & none\tabularnewline
+\hline 
+\end{tabular}
+\par\end{centering}
+
+\caption{\label{tab:families}Possible values for the ``\texttt{family}''
+field}
+\end{table}
+
+\par\end{center}
+
+Both userspace and kernelspace must agree on the same \textsf{<}\textit{name},
+\textit{revision}, \textit{address family}, \textit{size}\textsf{>}
+4\nobreakdash-tuple for an \texttt{xt\_match} to be successfully
+used.
+\begin{lyxcode}
+~~~~~~~~.name~~~~~~~=~\textquotedbl{}ipaddr\textquotedbl{},~\\
+~~~~~~~~.revision~~~=~0,~\\
+~~~~~~~~.family~~~~~=~NFPROTO\_IPV4,
+\end{lyxcode}
+The \texttt{\index{table@\texttt{table}}table}, \texttt{hooks} and
+\texttt{proto} fields can limit where the match may be used. If the
+field is not provided, no table, hook or protocol restriction will
+be applied, respectively. There are no Xtables matches we know of
+that are limited to a specific table, but the field is there for completeness.
+\texttt{hooks} is seen sometimes, for example in \textsf{xt\_owner},
+which matches on the socket sending the skb~--- information which
+is only available in the output path as of 2.6.25, so \textsf{xt\_owner}
+sets \texttt{hooks}. \texttt{hooks} will be covered in deeper detail
+in section~\ref{sub:xttarget-initialization} about Xtables targets.
+
+\texttt{\index{proto@\texttt{proto}}proto}, as far as matches are
+concerned, is primarily used by IPv6 extension header and non-extension
+layer\nobreakdash-4 protocol matches, i.\,e.\ when you invoke `\texttt{iptables
+-A INPUT -p tcp}`, ``\texttt{-m tcp}'' is implicitly added. Since
+\textsf{xt\_tcpudp} has \texttt{.proto~= \index{IPPROTO_TCP@\texttt{IPPROTO\_TCP}}IPPROTO\_TCP},
+the module, and hence the entire rule, will only match on TCP traffic.
+You should not artificially limit a match to a certain protocol, either
+by use of \texttt{proto} or by not interpreting anything else than
+a specific protocol~--- please provide code for all protocols, if
+applicable and possible.
+
+\texttt{table} and \texttt{proto} are single-value fields, only \texttt{\index{hooks@\texttt{hooks}}hooks}
+is a bitmask. If you plan to allow a match or target in more than
+one table~--- but still not all tables that could possibly exist~---
+or more than one protocol, you need to write an appropriate check
+in the \texttt{checkentry} function (see section~\ref{sub:xtmatch-check}).
+
+The next fields are callbacks that the framework will use. \texttt{match}
+is what is called when a packet is passed to our module, \texttt{checkentry}
+and \texttt{destroy} are called on rule insertion and removal, respectively.
+Since we do not have anything meaningful to do, we will just do a
+\texttt{printk}\slash{}\texttt{pr\_info} inside \texttt{ipaddr\_mt\_check}
+and \texttt{ipaddr\_mt\_destroy} in our sample module.
+\begin{lyxcode}
+~~~~~~~~.match~~~~~~=~ipaddr\_mt,~\\
+~~~~~~~~.checkentry~=~ipaddr\_mt\_check,~\\
+~~~~~~~~.destroy~~~~=~ipaddr\_mt\_destroy,
+\end{lyxcode}
+Not of less importance is the \texttt{\index{matchsize@\texttt{matchsize}}matchsize}
+field which specifies the size of the private structure. Note the
+details about alignment in section~\ref{sub:xttricks-align}.
+\begin{lyxcode}
+~~~~~~~~.matchsize~~=~\textbf{sizeof}(\textbf{struct}~xt\_ipaddr\_mtinfo),~\\
+~~~~~~~~.me~~~~~~~~~=~THIS\_MODULE,~\\
+\};
+\end{lyxcode}
+The last line containing \texttt{\index{THIS_MODULE@\texttt{THIS\_MODULE}}THIS\_MODULE}
+is used for the Linux kernel module infrastructure; among other things,
+it serves for reference counting, so that the module is not unloaded
+while a rule exists that references the module. Include \texttt{\index{linux/module.h@\textit{linux/module.h}}<linux\slash{}module.h>}
+for it.
+
+Your kernel module's init function needs to call \texttt{\index{xt_register_match@\texttt{xt\_register\_match}}xt\_register\_match}
+with a pointer to the struct. This function is called on module loading.
+\begin{lyxcode}
+\textbf{static~int}~\_\_init~ipaddr\_mt\_init(\textbf{void})~\\
+\{~\\
+~~~~~~~~return~xt\_register\_match(\&ipaddr\_mt4\_reg);~\\
+\}
+\end{lyxcode}
+When unloading the module, the match needs to be unregistered again.
+\begin{lyxcode}
+\textbf{static~void}~\_\_exit~ipaddr\_mt\_exit(\textbf{void})~\\
+\{~\\
+~~~~~~~~\index{xt_unregister_match@\texttt{xt\_unregister\_match}}xt\_unregister\_match(\&ipaddr\_mt4\_reg);~\\
+\}
+\end{lyxcode}
+\texttt{\index{__init@\texttt{\_\_init}}\_\_init} and \texttt{\index{__exit@\texttt{\_\_exit}}\_\_exit}
+are markers that cause the functions to be emitted into specific sections
+in the resulting module (read: linker magic). It does not automatically
+mean that these are the entry and exit functions. For that, we need
+the following two extra lines coming after the functions:
+\begin{lyxcode}
+\index{module_init@\texttt{module\_init}}module\_init(ipaddr\_mt\_init);~\\
+\index{module_exit@\texttt{module\_exit}}module\_exit(ipaddr\_mt\_exit);
+\end{lyxcode}
+You should not forget to add the standard module boilerplate, that
+is, author (you can have multiple lines of them), description and
+license:
+\begin{lyxcode}
+\index{MODULE_AUTHOR@\texttt{MODULE\_AUTHOR}}MODULE\_AUTHOR(\textquotedbl{}Me~<my@address.com>\textquotedbl{});~\\
+\index{MODULE_DESCRIPTION@\texttt{MODULE\_DESCRIPTION}}MODULE\_DESCRIPTION(\textquotedbl{}Xtables:~Match~source/destination~address\textquotedbl{});~\\
+\index{MODULE_LICENSE@\texttt{MODULE\_LICENSE}}MODULE\_LICENSE(\textquotedbl{}GPL\textquotedbl{});
+\end{lyxcode}
+Reminding you, just in case you have already forgotten, make sure
+that the module has the necessary module aliases required for automatic
+loading.
+\begin{lyxcode}
+MODULE\_ALIAS(\textquotedbl{}ipt\_ipaddr\textquotedbl{});
+\end{lyxcode}
+
+\subsection{Naming convention\label{sub:xtmatch-naming}}
+
+It is advised to keep \index{symbol}symbols (function and variable
+names) unique across the whole kernel. This is because if you just
+name your match function ``\texttt{match}'', which was historically
+done in a lot of modules (probably due to copy~\& paste when new
+modules were developed), it becomes hard to recognize whether it was
+module1's match or module2's match function in a potential kernel
+stack trace during oops. You do not need to actually use totally-unique
+names for all symbols, but for the parts that interface to Xtables,
+it is recommended. The standard naming is the match name, an underscore,
+``\texttt{mt}'' (\texttt{ipaddr\_mt} in our example) and another
+word for the symbol. You will get to see it in action in the example
+code as you read through this document. Typically we use these:
+\begin{itemize}
+\item \texttt{ipaddr\_mt\_reg}~-- the structure (sort of an ``object'')
+containing all the metadata such as name and the function pointer
+table (``vtable'')
+\item \texttt{ipaddr\_mt}~-- the match function
+\item \texttt{ipaddr\_mt\_check}~-- function to check for validity of parameters
+in our struct
+\item \texttt{ipaddr\_mt\_destroy}~-- function to call when rule is deleted
+\item \texttt{struct xt\_ipaddr\_mtinfo}~-- structure for our own data
+\item \texttt{ipaddr\_mt4} and \texttt{ipaddr\_mt6}, \texttt{ipaddr\_mt4\_check}
+and \texttt{ipaddr\_mt6\_check}, etc.~-- when the IPv4 and IPv6 bits
+do not share the same entrypoint.
+\item \texttt{struct xt\_ipaddr\_mtinfo}\texttt{\textit{N}}~-- structure
+for revision \textit{N}
+\end{itemize}
+
+\subsection{Point of decision~-- \index{match function}match function\label{sub:xtmatch-function}}
+
+The Linux networking stack is sprinkled with Netfilter hooks. Thus,
+when a packet is going to be processed, the networking stack passes
+the packet to each hook. Of interest here is only Xtables of course;
+the hooks \texttt{\index{NF_IP6_PRI_MANGLE@\texttt{NF\_IP6\_PRI\_MANGLE}}NF\_IP6\_\-PRI\_\-MANGLE},
+\texttt{\index{NF_IP6_PRI_FILTER@\texttt{NF\_IP6\_PRI\_FILTER}}NF\_IP6\_\-PRI\_\-FILTER},
+and its IPv4 counterparts map to a table. When control is passed to
+the \texttt{ip6t\_do\_table} function, it will iterate over each rule,
+which in turn iterates through each match that is used in a given
+rule. When it is the time for your module to have the packet, it can
+finally do its job.
+\begin{lyxcode}
+\textbf{static~bool}~ipaddr\_mt(\textbf{const~struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~~~~~~~~~~~~~~~~~~~\textbf{\index{struct xt_action_param@\texttt{struct xt\_action\_param}}struct}~xt\_action\_param~\textbf{{*}}par)~\\
+\{
+\end{lyxcode}
+The contents of the \texttt{\index{struct xt_action_param@\texttt{struct xt\_action\_param}}xt\_action\_param}
+structure have been previously shown in section~\ref{sub:xtmatch-struct},
+now here is what they are used for. \texttt{\index{in@\texttt{in}}par->in}
+and \texttt{\index{out@\texttt{out}}par->out} are the network devices
+through which the packet came in or went out; they may be \texttt{NULL}
+in certain chains, see table~\ref{tab:interfaces}. Interfaces are
+rarely used in Xtables, only the logging targets seem to make use
+of it right now.
+
+\begin{table}[h]
+\begin{centering}
+\begin{tabular}{|c||c|c|}
+\hline 
+ & in & out\tabularnewline
+\hline 
+\hline 
+\textsf{\index{BROUTING@\textsf{BROUTING}}BROUTING}, \textsf{\index{PREROUTING@\textsf{PREROUTING}}PREROUTING}
+and \textsf{\index{INPUT@\textsf{INPUT}}INPUT} & $\checkmark$ & ---\tabularnewline
+\hline 
+\textsf{\index{FORWARD@\textsf{FORWARD}}FORWARD} & $\checkmark$ & $\checkmark$\tabularnewline
+\hline 
+\textsf{\index{OUTPUT@\textsf{OUTPUT}}OUTPUT} and \textsf{\index{POSTROUTING@\textsf{POSTROUTING}}POSTROUTING} & --- & $\checkmark$\tabularnewline
+\hline 
+\end{tabular}
+\par\end{centering}
+
+\caption{\label{tab:interfaces}Availability of interface variables}
+\end{table}
+
+
+\texttt{\index{match@\texttt{match}}par->match} points to the structure
+through which the match function was invoked, and allows to determine
+which address family was used. If the function was called with the
+IPv6 structure, which naturally has \texttt{.family~= NFPROTO\_IPV6},
+we know that \texttt{xt\_ipaddr\_mtinfo} was filled in with an IPv6
+address. This can be helpful when you want to combine code (as is
+done in \textsf{xt\_connlimit} for example).
+
+Recent development saw the addition of \texttt{\index{family@\texttt{family}}par->family}
+(also available in Linux 2.6.28) which carries the \texttt{NFPROTO\_}{*}
+number the match function was invoked with, so that the family is
+still known even when \texttt{par->match->family~== NFPROTO\_\-UNSPEC}.
+
+\texttt{\index{matchinfo@\texttt{matchinfo}}par->matchinfo} is the
+data block copied from userspace, and here we map it. Note that \textbf{\textit{no}}
+casts are required between \texttt{void~{*}} and any other (non-function)
+pointer type in C, so do not attempt anything unwise!
+\begin{lyxcode}
+~~~~~~~~\textbf{const~struct}~xt\_ipaddr\_mtinfo~\textbf{{*}}info~=~par->matchinfo;
+\end{lyxcode}
+\texttt{skb} contains the packet we want to look at. You need to include
+\texttt{\index{linux/skbuff.h@\textit{linux/skbuff.h}}<linux\slash{}skbuff.h>}
+if you do any skb operation or access the struct's members. For more
+information about this powerful structure used everywhere in the Linux
+networking stack, I recommend the book ``Understanding Linux Network
+Internals''\citet{LinuxNetInt}. While the latest edition of the
+book is a few years back and maps to Linux 2.6.14, it is still a very
+helpful read. There is also section~\ref{sub:xttricks-skbuff} in
+this book.
+
+The \texttt{\index{ip_hdr@\texttt{ip\_hdr}}ip\_hdr} function returns
+a pointer to the start of the IPv4 header.
+\begin{lyxcode}
+~~~~~~~~\textbf{const~struct}~iphdr~\textbf{{*}}iph~=~ip\_hdr(skb);
+\end{lyxcode}
+Here, we are just printing some of the variables passed to see what
+they look like. The macros \texttt{\index{NIPQUAD_FMT@\texttt{NIPQUAD\_FMT}}NIPQUAD\_FMT}
+and \texttt{\index{NIPQUAD@\texttt{NIPQUAD}}NIPQUAD} are used to
+display an IPv4 address in readable format. It is defined in \texttt{\index{linux/kernel.h@\textit{linux/kernel.h}}<linux\slash{}kernel.h>}.
+\begin{lyxcode}
+~~~~~~~~pr\_info(~\\
+~~~~~~~~~~~~~~~\textquotedbl{}xt\_ipaddr:~IN=\%s~OUT=\%s~\textquotedbl{}~\\
+~~~~~~~~~~~~~~~\textquotedbl{}SRC=\textquotedbl{}~NIPQUAD\_FMT~\textquotedbl{}~DST=\textquotedbl{}~NIPQUAD\_FMT~\textquotedbl{}~\textquotedbl{}~\\
+~~~~~~~~~~~~~~~\textquotedbl{}IPSRC=\textquotedbl{}~NIPQUAD\_FMT~\textquotedbl{}~IPDST=\textquotedbl{}~NIPQUAD\_FMT~\textquotedbl{}\textbackslash{}n\textquotedbl{},~\\
+~~~~~~~~~~~~~~~(par->in~!=~NULL)~?~par->in->name~:~\textquotedbl{}\textquotedbl{},~\\
+~~~~~~~~~~~~~~~(par->out~!=~NULL)~?~par->out->name~:~\textquotedbl{}\textquotedbl{},~\\
+~~~~~~~~~~~~~~~NIPQUAD(iph->saddr),~NIPQUAD(iph->daddr),~\\
+~~~~~~~~~~~~~~~NIPQUAD(info->src),~NIPQUAD(info->dst));
+\end{lyxcode}
+For IPv6 addresses, use \texttt{NIP6\_FMT} and \texttt{NIP6}, respectively.
+In kernels starting from 2.6.29, printing addresses changed when the
+\texttt{NIP6} macros were removed in favor of the new format characters.
+When writing a module whilst making use of the Xtables-addons compat
+layer, continue to use \texttt{NIPQUAD}/\texttt{NIP6} and the \texttt{\_FMT}
+macros.
+\begin{lyxcode}
+pr\_info(\textquotedbl{}SRC=\%pI4~/~\%pI6\textbackslash{}n\textquotedbl{},~\&ip4h->saddr,~\&ip6h->saddr);
+\end{lyxcode}
+If the \texttt{XT\_IPADDR\_SRC} flag has been set, we check whether
+the source address matches the one specified in the rule. If it does
+not match, the whole rule will not match, so we can already return
+\texttt{false} here. Note that the comparison of \texttt{iph->saddr}
+with \texttt{info->src.ip} is XORed with the presence (double exclamation
+mark) of the \index{inversion}inversion flag \texttt{XT\_IPADDR\_\-SRC\_INV}
+to flip the result of the comparison to get the invert semantics.
+\begin{lyxcode}
+~~~~~~~~\textbf{if}~(info->flags~\&~XT\_IPADDR\_SRC)~\\
+~~~~~~~~~~~~~~~~\textbf{if}~((iph->saddr~!=~info->src.ip)~\textasciicircum{}~\\
+~~~~~~~~~~~~~~~~~~~~\index{double-exclamation}!!(info->flags~\&~XT\_IPADDR\_SRC\_INV))~\{~\\
+~~~~~~~~~~~~~~~~~~~~~~~~pr\_notice(\textquotedbl{}src~IP~-~no~match\textbackslash{}n\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~~~~~~~~~\textbf{return}~false;~\\
+~~~~~~~~~~~~~~~~\}
+\end{lyxcode}
+For an explanation of the use of ``\texttt{!!}'', see appendix~\ref{sub:double-exclam}.
+
+Here, we do the same, except that we look for the destination address
+if \texttt{XT\_IPADDR\_DST} has been set.
+\begin{lyxcode}
+~~~~~~~~\textbf{if}~(info->flags~\&~XT\_IPADDR\_DST)~\\
+~~~~~~~~~~~~~~~~\textbf{if}~((iph->daddr~!=~info->dst.ip)~\textasciicircum{}~\\
+~~~~~~~~~~~~~~~~~~~~!!(info->flags~\&~XT\_IPADDR\_DST\_INV))~\{~\\
+~~~~~~~~~~~~~~~~~~~~~~~~pr\_notice(\textquotedbl{}dst~IP~-~no~match\textbackslash{}n\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~~~~~~~~~\textbf{return}~false;~\\
+~~~~~~~~~~~~~~~~\}
+\end{lyxcode}
+At the end of the function, we will return \texttt{true}, because
+we have excluded all non-matching cases before\citet{ElseHarmful}.
+\begin{lyxcode}
+~~~~~~~~\textbf{return}~true;~\\
+\}
+\end{lyxcode}
+If there is a problem that prohibits or makes it impossible to determine
+whether the packet matched or not, e.\,g.\ memory allocation failure
+or a bogus packet, \texttt{\index{hotdrop@\texttt{hotdrop}}par->hotdrop}
+should be set to \texttt{true} and the function should return \texttt{false}.
+Example from \textsf{xt\_tcpudp}:
+\begin{lyxcode}
+\textbf{/{*}~}\textrm{\textit{Extract~TCP~options}}\textbf{~{*}/}~\\
+op~=~skb\_header\_pointer(skb,~par->thoff~+~\textbf{sizeof}(\index{struct tcphdr@\texttt{struct tcphdr}}\textbf{struct}~tcphdr),~\\
+~~~~~~~~~~~~~~~~~~~~~~~~optlen,~\_opt);~\\
+\textbf{if}~(op~==~NULL)~\{~\\
+~~~~~~~~par->hotdrop~=~true;~\\
+~~~~~~~~\textbf{return}~false;~\\
+\}
+\end{lyxcode}
+The \texttt{\index{thoff@\texttt{thoff}}par->thoff} argument to our
+match function contains the offset into the packet where the transport
+header for the protocol given in \texttt{ipaddr\_mt\_reg.proto}, in
+this case the TCP header, begins. \texttt{\index{skb_header_pointer@\texttt{skb\_header\_pointer}}skb\_header\_pointer}
+extracts data from the position given in its second argument, which
+is relative to the \texttt{skb->data} pointer. For Ebtables modules,
+\texttt{skb->data} will point to the layer\nobreakdash-2 header,
+whereas for ip, ip6 and arptables, it will be the layer\nobreakdash-3
+header.
+
+
+\subsection{Rule validation~-- \index{checkentry function}checkentry function\label{sub:xtmatch-check}}
+
+\texttt{checkentry} is often used as a kernel-side sanity check of
+the data the user input, as you should not rely on the \textsf{iptables}
+userspace program passing in proper information. It is also used to
+trigger loading of any additional modules that might be required for
+the match to function properly, such as layer\nobreakdash-3 \index{connection tracking}connection
+tracking, which is essential for connection-based matches like \textsf{xt\_connlimit},
+\textsf{xt\_conntrack}, and a few more. What's more, this function
+may be used to allocate extra memory that may be needed to store state~---
+more on this in section~\ref{sub:xttricks-alloc}. This function
+is called when you try to add a rule, but it happens before the rule
+is actually inserted.
+
+If you do not plan on loading or verifying anything, you can omit
+the function.
+\begin{lyxcode}
+\textbf{static~int}~ipaddr\_mt\_check(\textbf{\index{struct xt_mtchk_param@\texttt{struct xt\_mtchk\_param}}const~struct}~xt\_mtchk\_param~\textbf{{*}}par)~\\
+\{~\\
+~~~~~~~~\textbf{const~struct}~xt\_ipaddr\_mtinfo~\textbf{{*}}info~=~par->matchinfo;~\\
+~\\
+~~~~~~~~pr\_info(\textquotedbl{}Added~a~rule~with~-m~ipaddr~in~the~\%s~table;~this~rule~is~\textquotedbl{}~\\
+~~~~~~~~~~~~~~~~\textquotedbl{}reachable~through~hooks~0x\%x\textbackslash{}n\textquotedbl{},~\\
+~~~~~~~~~~~~~~~~par->table,~par->hook\_mask);~\\
+~\\
+~~~~~~~~\textbf{if}~(!(info->flags~\&~(XT\_IPADDR\_SRC~|~XT\_IPADDR\_DST)))~\{~\\
+~~~~~~~~~~~~~~~~pr\_info(\textquotedbl{}not~testing~for~anything\textbackslash{}n\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~\textbf{return}~-EINVAL;~\\
+~~~~~~~~\}~\\
+~\\
+~~~~~~~~\textbf{if}~(\index{ntohl@\texttt{ntohl}}ntohl(info->src.ip)~==~0xDEADBEEF)~\{~\\
+~~~~~~~~~~~~~~~~/{*}~\textrm{\textit{This~just~for~fun}}~{*}/~\\
+~~~~~~~~~~~~~~~~pr\_info(\textquotedbl{}I'm~sorry,~Dave.~I'm~afraid~I~can't~let~you~do~that.\textbackslash{}n\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~\textbf{return}~-EPERM;~\\
+~~~~~~~~\}~\\
+~\\
+~~~~~~~~\textbf{return}~0;~\\
+\}
+\end{lyxcode}
+The \texttt{checkentry} function may also be used to limit the match
+to specific tables, hooks or combinations thereof if the mechanisms
+provided by \texttt{struct xt\_match} are not sufficient. More on
+that in section~\ref{sub:xttarget-checkentry}.
+
+\texttt{checkentry} is supposed to return an error code as shown.
+Often, \texttt{-EINVAL} is the most meaningful, but since \texttt{EINVAL}
+is kind of overused in the kernel for whenever there is an invalid
+option combination or similar, a helpful message should be added.
+
+
+\subsection{Rule destruction~-- \index{destroy function}destroy function}
+
+The \texttt{destroy} function is provided as a counterpart for modules
+which used \texttt{checkentry} as means to load additional modules
+or allocating space. Of course, we would like to free that space when
+a rule is removed, and drop additional modules reference count so
+they can be unloaded if desired. Since our \textsf{xt\_ipaddr} does
+not allocate anything or use extra modules, it will just print out
+something for demonstration. This function may also be omitted.
+\begin{lyxcode}
+\textbf{static~void}~ipaddr\_mt\_destroy(\textbf{\index{struct xt_mtdtor_param@\texttt{struct xt\_mtdtor\_param}}const~struct}~xt\_mtdtor\_param~\textbf{{*}}par)~\\
+\{~\\
+~~~~~~~~\textbf{const~struct}~xt\_ipaddr\_mtinfo~\textbf{{*}}info~=~par->matchinfo;~\\
+~~~~~~~~pr\_info(\textquotedbl{}Test~for~address~\%08lX~removed\textbackslash{}n\textquotedbl{},~info->src.ip);~\\
+\}
+\end{lyxcode}
+
+\subsection{\index{IPv6}IPv6 support\label{sub:xtmatch-ipv6}}
+
+IPv6 is emerging, and it would be cool if our module also supported
+IPv6. After all, it is what is supposed to replace IPv4 in the future.
+Next Header parsing requires a bit more code for IPv6, but since we
+are just comparing source and destination address in the IPv6 header,
+our example currently remains small.
+
+If your module inherently does not support IPv6 because, for example,
+it matches on an IPv4-specific property, you of course do not add
+match code or a \texttt{struct xt\_match} for IPv6.
+\begin{lyxcode}
+\textbf{static~bool}~ipaddr\_mt6(\textbf{const~struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~~~~~~~~~~~~~~~~~~~~\textbf{\index{struct xt_action_param@\texttt{struct xt\_action\_param}}const~struct}~xt\_action\_param~\textbf{{*}}par)~\\
+\{~\\
+~~~~~~~~\textbf{const~struct}~xt\_ipaddr\_mtinfo~\textbf{{*}}info~=~par->matchinfo;~\\
+~~~~~~~~\textbf{\index{struct ipv6hdr@\texttt{struct ipv6hdr}}const~struct}~ipv6hdr~{*}iph~=~\index{ipv6_hdr@\texttt{ipv6\_hdr}}ipv6\_hdr(skb);~\\
+~\\
+~~~~~~~~\textbf{if}~(info->flags~\&~XT\_IPADDR\_SRC)~\\
+~~~~~~~~~~~~~~~~\textbf{if}~((\index{ipv6_addr_cmp@\texttt{ipv6\_addr\_cmp}}ipv6\_addr\_cmp(\&iph->saddr,~\&info->src.in6)~!=~0)~\textasciicircum{}~\\
+~~~~~~~~~~~~~~~~~~~~!!(info->flags~\&~XT\_IPADDR\_SRC\_INV))~\\
+~~~~~~~~~~~~~~~~~~~~~~~~\textbf{return}~false;~\\
+~\\
+~~~~~~~~\textbf{if}~(info->flags~\&~XT\_IPADDR\_DST)~\\
+~~~~~~~~~~~~~~~~\textbf{if}~((ipv6\_addr\_cmp(\&iph->daddr,~\&info->dst.in6)~!=~0)~\textasciicircum{}~\\
+~~~~~~~~~~~~~~~~~~~~!!(info->flags~\&~XT\_IPADDR\_DST\_INV))~\\
+~~~~~~~~~~~~~~~~~~~~~~~~\textbf{return}~false;~\\
+~\\
+~~~~~~~~\textbf{return}~true;~\\
+\}
+\end{lyxcode}
+You would then declare a new \texttt{struct xt\_match} with \texttt{match}
+pointing to \texttt{ipaddr\_mt6}.
+\begin{lyxcode}
+\textbf{\index{struct xt_match@\texttt{struct xt\_match}}static~struct}~xt\_match~ipaddr\_mt6\_reg~\_\_read\_mostly~=~\{~\\
+~~~~~~~~.name~~~~~~=~\textquotedbl{}ipaddr\textquotedbl{},~\\
+~~~~~~~~.revision~~=~0,~\\
+~~~~~~~~.family~~~~=~NFPROTO\_IPV6,~\\
+~~~~~~~~.match~~~~~=~ipaddr\_mt6,~\\
+~~~~~~~~.matchsize~=~\textbf{sizeof}(\textbf{struct}~xt\_ipaddr\_mtinfo),~\\
+~~~~~~~~.me~~~~~~~~=~THIS\_MODULE,~\\
+\};
+\end{lyxcode}
+and call \texttt{xt\_register\_match(\&ipaddr\_mt6\_reg)} next to
+the already existing registration call for \texttt{ipaddr\_mt4\_reg},
+of course, with proper error handling:
+\begin{lyxcode}
+\textbf{static~int}~\_\_init~ipaddr\_mt\_reg(void)~\\
+\{~\\
+~~~~~~~~\textbf{int}~ret;~\\
+~\\
+~~~~~~~~ret~=~\index{xt_register_match@\texttt{xt\_register\_match}}xt\_register\_match(\&ipaddr\_mt4\_reg);~\\
+~~~~~~~~\textbf{if}~(ret~<~0)~\\
+~~~~~~~~~~~~~~~~return~ret;~\\
+~~~~~~~~ret~=~xt\_register\_match(\&ipaddr\_mt6\_reg);~\\
+~~~~~~~~\textbf{if}~(ret~<~0)~\{~\\
+~~~~~~~~~~~~~~~~\index{xt_unregister_match@\texttt{xt\_unregister\_match}}xt\_unregister\_match(\&ipaddr\_mt4\_reg);~\\
+~~~~~~~~~~~~~~~~\textbf{return}~ret;~\\
+~~~~~~~~\}~\\
+~~~~~~~~\textbf{return}~0;~\\
+\}
+\end{lyxcode}
+As the number of match structures grow~--- and the possibility to
+do revisions just increases the likelihood of that happening~---
+this will accumulate to a great amount of redundantly typed error
+code paths. There exists a much better way for registering multiple
+matches at once, which is explained in section~\ref{sub:xttricks-multi}.
+
+
+\subsection{Building the module}
+
+To actually build our precious work, we need a Makefile and other
+bits to make `\texttt{make}` do the right thing. There are a number
+of different approaches here, in some of which you can skip the build
+logic largely and concentrate on the module.
+
+
+\subsubsection{Using the Xtables-addons package}
+
+Place the modules' files~--- \texttt{xt\_ipaddr.c} and \texttt{xt\_ipaddr.h}~---
+into the \texttt{extensions/} directory and modify the \texttt{Kbuild}
+file to include \texttt{xt\_ipaddr.o} in the object list and the \texttt{mconfig}
+file to give \texttt{build\_ipaddr} a value, like the rest of the
+extensions. Please read the \texttt{INSTALL} file on how to correctly
+configure and compile \textsf{Xtables-addons}.
+
+In the \textsf{mbuild} file in the top-level directory, you define
+whether or not to build a given extension, much like the kernel's
+\texttt{.config}:
+\begin{lyxcode}
+build\_ipaddr=m
+\end{lyxcode}
+Then you also need the actual Makefile logic, which is also modeled
+upon the kernel's build system. Add to the \texttt{extensions\slash{}Kbuild}
+file:
+\begin{lyxcode}
+obj-\$\{build\_ipaddr\}~+=~xt\_ipaddr.o
+\end{lyxcode}
+And to \texttt{extensions\slash{}Mbuild}:
+\begin{lyxcode}
+obj-\$\{build\_ipaddr\}~+=~libxt\_ipaddr.so
+\end{lyxcode}
+
+\subsubsection{Standalone package}
+
+If you are writing your module in a out-of-tree standalone package,
+you can use a simple boilerplate Makefile:
+\begin{lyxcode}
+\textbf{\#~-{*}-~\index{Makefile}Makefile~-{*}-}~\\
+MODULES\_DIR~:=~/lib/modules/\$(shell~uname~-r)~\\
+KERNEL\_DIR~~:=~\$\{MODULES\_DIR\}/build~\\
+~\\
+obj-m~+=~xt\_ipaddr.o~\\
+~\\
+all:~\\
+~~~~~~~~make~-C~\$\{KERNEL\_DIR\}~M=\$\$PWD;~\\
+modules:~\\
+~~~~~~~~make~-C~\$\{KERNEL\_DIR\}~M=\$\$PWD~\$@;~\\
+modules\_install:~\\
+~~~~~~~~make~-C~\$\{KERNEL\_DIR\}~M=\$\$PWD~\$@;~\\
+clean:~\\
+~~~~~~~~make~-C~\$\{KERNEL\_DIR\}~M=\$\$PWD~\$@;
+\end{lyxcode}
+Besides the Makefile, you need (of course) the source files and a
+kernel source tree. Calling `\texttt{make}` then is everything needed
+to build \texttt{xt\_ipaddr.ko}. You may pass \texttt{KERNEL\_DIR=/path\slash{}to\slash{}builddir}
+to \textsf{make} in case you want to build against a kernel other
+than the one currently running.
+
+The drawback compared to using Xtables-addons is of course that you
+do not get the pleasure to use the pre-existing glue code without
+doing some work yourself (such as copying it, keeping it up-to-date,
+etc.).
+
+
+\subsubsection{In-tree modifications to the kernel}
+
+The \texttt{xt\_ipaddr.c} file should be put into \texttt{net\slash{}netfilter/}
+and \texttt{xt\_ipaddr.h} into \texttt{include\slash{}linux\slash{}netfilter/}.
+Then you edit \texttt{net\slash{}netfilter\slash{}Makefile} and
+add a rule for your match to be built:
+\begin{lyxcode}
+obj-\$\{CONFIG\_NETFILTER\_XT\_MATCH\_IPADDR\}~+=~xt\_ipaddr.o
+\end{lyxcode}
+Finally, add the config option and a help text itself in \texttt{net\slash{}netfilter\slash{}Kconfig}.
+Where exactly you place this block in the \texttt{\index{Kconfig}Kconfig}
+file does not matter, but we like to keep the list sorted, so \textsf{ipaddr}
+would currently find its place between the \texttt{NETFILTER\_XT\_MATCH\_HELPER}
+and \texttt{NETFILTER\_XT\_MATCH\_IPRANGE} config options.
+\begin{lyxcode}
+\textbf{config}~NETFILTER\_XT\_MATCH\_IPADDR~\\
+~~~~~~~~\textbf{tristate}~'\textquotedbl{}ipaddr\textquotedbl{}~source/destination~address~match'~\\
+~~~~~~~~\textbf{depends~on}~NETFILTER\_XTABLES~\\
+~~~~~~~~\textbf{-{}-{}-help-{}-{}-}~\\
+~~~~~~~~The~xt\_ipaddr~module~allows~you~to~match~on~source~and/or~\\
+~~~~~~~~destination~address,~and~serves~demonstration~purposes~only.
+\end{lyxcode}
+Please have a look at or Git\citet{Git,GitJB}, Quilt\citet{QuiltFM,QuiltAG}
+or StGit\citet{StGit} if you intend on submitting patches for your
+new module.
+
+
+\subsection{Summary}
+
+In this second part, we covered the basics of the Xtables module infrastructure
+and how to register our module with the framework by using a specific
+structure and functions. We discussed how to match a specific situation
+according to our idea, and how to go about IPv6 support, as well as
+a short section on how to get the module built.
+
+\clearpage{}
+
+
+\section{Userspace plugin}
+
+The purpose of an iptables extension is basically to interact with
+the user. It will handle the arguments the user wants the kernel part
+to take into consideration.
+
+
+\subsection{Structural definition}
+
+\texttt{struct xtables\_match} defines the vtable for one address
+family of a match extension. It is available from \texttt{\index{xtables.h@\textit{xtables.h}}<xtables.h>}.
+\begin{lyxcode}
+\textbf{\index{struct xtables_match@\texttt{struct xtables\_match}}struct}~xtables\_match~\{~\\
+~~~~~~~~\textbf{const~char~{*}}version;~\\
+~~~~~~~~\textbf{const~char~{*}}name;~\\
+~~~~~~~~\textbf{uint8\_t}~revision;~\\
+~~~~~~~~\textbf{uint16\_t}~family;~\\
+~\\
+~~~~~~~~\textbf{size\_t}~size;~\\
+~~~~~~~~\textbf{size\_t}~userspacesize;~\\
+~\\
+~~~~~~~~\textbf{void~({*}}help\textbf{)}(\textbf{void});~\\
+~~~~~~~~\textbf{void~({*}}init\textbf{)}(\textbf{struct~xt\_entry\_match~{*}}match);~\\
+~~~~~~~~\textbf{int~({*}}parse\textbf{)}(\textbf{int}~c,~\textbf{char~{*}{*}}argv,~\textbf{int}~invert,~\textbf{unsigned~int~{*}}flags,~\\
+~~~~~~~~~~~~~~~~~~~~~\textbf{const~void~{*}}entry,~\textbf{struct}~xt\_entry\_match~\textbf{{*}{*}}match);~\\
+~~~~~~~~\textbf{void~({*}}final\_check\textbf{)}(\textbf{unsigned~int}~flags);~\\
+~~~~~~~~\textbf{void~({*}}print\textbf{)}(\textbf{const~void~{*}}entry,~\\
+~~~~~~~~~~~~~~~~~~~~~~\textbf{const~struct}~xt\_entry\_match~\textbf{{*}}match,~\\
+~~~~~~~~~~~~~~~~~~~~~~\textbf{int}~numeric);~\\
+~~~~~~~~\textbf{void~({*}}save\textbf{)}(\textbf{const~void~{*}}entry,~\\
+~~~~~~~~~~~~~~~~~~~~~\textbf{const~struct}~xt\_entry\_match~\textbf{{*}}match);~\\
+~~~~~~~~\textbf{const~struct}~option~\textbf{{*}}extra\_opts;~\\
+\};
+\end{lyxcode}
+
+\subsection{Extension initialization}
+\begin{lyxcode}
+\textbf{static~struct}~xtables\_match~ipaddr\_mt4\_reg~=~\{~\\
+~~~~~~~~.version~~~~~~~=~XTABLES\_VERSION,
+\end{lyxcode}
+\index{version@\texttt{version}}\texttt{version} is always initialized
+to \index{XTABLES_VERSION@\texttt{XTABLES\_VERSION}}\texttt{XTABLES\_VERSION}.
+This is to avoid loading old modules in \texttt{/usr\slash{}libexec\slash{}xtables}
+with a newer, potentially incompatible iptables version.
+
+\texttt{name} specifies the name of the module (obviously). It has
+to match the name set in the kernel module. Together with the next
+two fields, the <\textit{name}, \textit{revision}, \textit{address
+family}> tuple is used to uniquely lookup the corresponding kernel
+module. \texttt{\index{revision@\texttt{revision}}revision} specifies
+that this \texttt{xtables\_match} is only to be used with the same-revision
+kernel-side Xtables match. \texttt{\index{family@\texttt{family}}family}
+denotes what family this match operates on, in this case IPv4 (\texttt{\index{NFPROTO_IPV4@\texttt{NFPROTO\_IPV4}}NFPROTO\_IPV4}),
+or IPv6 (\texttt{\index{NFPROTO_IPV6@\texttt{NFPROTO\_IPV6}}NFPROTO\_IPV6}).
+You can also use \texttt{\index{NFPROTO_UNSPEC@\texttt{NFPROTO\_UNSPEC}}NFPROTO\_UNSPEC},
+which acts as a wildcard.
+\begin{lyxcode}
+~~~~~~~~.name~~~~~~~~~~=~\textquotedbl{}ipaddr\textquotedbl{},~\\
+~~~~~~~~.revision~~~~~~=~0,~\\
+~~~~~~~~.family~~~~~~~~=~NFPROTO\_IPV4,
+\end{lyxcode}
+\texttt{\index{size@\texttt{size}}size} specifies the size of our
+private structure in total. \texttt{\index{userspacesize@\texttt{userspacesize}}userspacesize}
+specifies the part of the structure that is relevant to rule matching
+when replacing or deleting rules. It does not apply to index-based
+deletion such as `\texttt{iptables -D INPUT 1}`, but for match/mask-based
+deletion, as in `\texttt{iptables -D INPUT -m rateest -{}-rateest1
+name1 -{}-rateest2 name2 ... -j ACCEPT}`. When such a command is issued,
+the binary representation of that rule is constructed, and if it matches
+the binary blob from the kernel, it will be deleted. However, the
+\texttt{est1} and \texttt{est2} fields of \texttt{struct xt\_rateest\_mtinfo}
+are kernel-private fields and should be exempted from comparison.
+This realized by specifying a \texttt{userspacesize} that is smaller
+than \texttt{size}, using \texttt{\index{offsetof@\texttt{offsetof}}offsetof}%
+\footnote{See \texttt{libxt\_rateest.c} in the iptables source package for an
+example.%
+}. This is why kernel fields also should be at the end of the structure.
+
+Usually, both \texttt{size} and \texttt{userspacesize} are the same,
+but there are exceptions like the aforementioned \textsf{xt\_rateest}
+where the kernel module keeps additional information for itself. When
+\texttt{userspacesize} is less than \texttt{size}, it must not use
+\texttt{XT\_ALIGN(offsetof(...)))}, but just \texttt{offsetof(...)}.
+\begin{lyxcode}
+~~~~~~~~.size~~~~~~~~~~=~\index{XT_ALIGN@\texttt{XT\_ALIGN}}XT\_ALIGN(\textbf{sizeof}(\textbf{struct}~xt\_ipaddr\_mtinfo)),~\\
+~~~~~~~~.userspacesize~=~XT\_ALIGN(\textbf{sizeof}(\textbf{struct}~xt\_ipaddr\_mtinfo)),
+\end{lyxcode}
+\texttt{help} is called whenever a user enters `\texttt{iptables -m
+module -h}`. \texttt{parse} is called when you enter a new rule; its
+duty is to validate the arguments. \texttt{print} is invoked by `\texttt{iptables
+-L}` to show previously inserted rules.
+\begin{lyxcode}
+~~~~~~~~.help~~~~~~~~~~=~ipaddr\_mt\_help,~\\
+~~~~~~~~.init~~~~~~~~~~=~ipaddr\_mt\_init,~\\
+~~~~~~~~.parse~~~~~~~~~=~ipaddr\_mt4\_parse,~\\
+~~~~~~~~.final\_check~~~=~ipaddr\_mt\_check,~\\
+~~~~~~~~.print~~~~~~~~~=~ipaddr\_mt4\_print,~\\
+~~~~~~~~.save~~~~~~~~~~=~ipaddr\_mt4\_save,~\\
+~~~~~~~~.extra\_opts~~~~=~ipaddr\_mt\_opts,~\\
+\};
+\end{lyxcode}
+It is possible to omit the \texttt{\index{init function}init}, \texttt{\index{check function}final\_check},
+\texttt{\index{print function}print}, \texttt{\index{save function}save}
+and \texttt{extra\_opts} members (same as explicitly initializing
+them to \texttt{NULL}). \texttt{\index{help function}help} and \texttt{\index{parse function}parse}
+must be defined.
+
+The reason we use \texttt{ipaddr\_mt4} sometimes and \texttt{ipaddr\_mt}
+is because some functions and structures can be shared between the
+IPv4 and the IPv6 code parts, as we will see later. What exactly can
+be shared is tightly bound to the extension you are writing.
+
+Each library must register to the running \textsf{iptables} (or \textsf{ip6tables})
+program by calling \texttt{\index{xtables_register_match@\texttt{xtables\_register\_match}}xtables\_\-register\_\-match}.
+The \texttt{\_init} function is called when the module is loaded by
+iptables. For more information about it, see \texttt{dlopen}(3). As
+a tiny implementation detail, note that \texttt{\_init} is actually
+defined as a macro for iptables, and the keyword will be replaced
+by appropriate logic to wire it up with iptables, as we cannot strictly
+use \texttt{\_init}, because the Glibc CRT (common runtime) stubs
+that will be linked into shared libraries, already do.
+\begin{lyxcode}
+\textbf{void}~\_init(\textbf{void})~\\
+\{~\\
+~~~~~~~~xtables\_register\_match(\&ipaddr\_mt\_reg);~\\
+\}
+\end{lyxcode}
+When \textsf{iptables} is built, this will expand to:
+\begin{lyxcode}
+\textbf{void}~\_\_attribute\_\_((constructor))~libxt\_ipaddr\_init(\textbf{void})
+\end{lyxcode}
+so you may not use the name \texttt{libxt\_ipaddr\_init} for other
+functions, or you will get an unfortunate compile error.
+
+In case you use the Xtables-addons framework, just directly write
+\begin{lyxcode}
+\textbf{static~void}~\_init(\textbf{void})
+\end{lyxcode}
+i.\,e.\ with the \texttt{\index{static@\texttt{static}}static}
+keyword and without the extra prototype above it, because modules
+are always compiled as shared library objects (\texttt{.so}) in Xtables-addons,
+so no symbols need to be globally visible.
+
+
+\subsection{Dumping rules~-- \index{save function}save function}
+
+If we have a ruleset that we want to save, iptables provides the tool
+\textsf{\index{iptables-save@\textsf{iptables-save}}iptables-save}
+which dumps all your rules. It needs your extension's help to interpret
+\texttt{struct xt\_ipaddr\_mtinfo}'s contents and dump proper rules.
+The output that is to be produced must be options as can be passed
+to iptables.
+\begin{lyxcode}
+\textbf{static~void}~ipaddr\_mt4\_save(\textbf{const~void~{*}}entry,~\\
+~~~~\textbf{\index{struct xt_entry_match@\texttt{struct xt\_entry\_match}}const~struct}~xt\_entry\_match~\textbf{{*}}match)~\\
+\{~\\
+~~~~~~~~\textbf{const~struct}~xt\_ipaddr\_mtinfo~\textbf{{*}}info~=~(\textbf{const~void~{*}})match->data;
+\end{lyxcode}
+We print out the source address if it is part of the rule.
+\begin{lyxcode}
+~~~~~~~~\textbf{if}~(info->flags~\&~XT\_IPADDR\_SRC)~\{~\\
+~~~~~~~~~~~~~~~~\textbf{if}~(info->flags~\&~XT\_IPADDR\_SRC\_INV)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~printf(\textquotedbl{}!~\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~printf(\textquotedbl{}-{}-ipsrc~\%s~\textquotedbl{},~\\
+~~~~~~~~~~~~~~~~~~~~~~~xtables\_ipaddr\_to\_numeric(\&info->src.in));~\\
+~~~~~~~~\}
+\end{lyxcode}
+Note that \texttt{\index{xtables_ipaddr_to_numeric@\texttt{xtables\_ipaddr\_to\_numeric}}xtables\_ipaddr\_to\_numeric}
+uses a static buffer, so you may not call it more than once before
+having the result printed out. It will convert a \texttt{\index{struct in_addr@\texttt{struct in\_addr}}struct
+in\_addr} to numeric representation (``\index{dotted notation}dotted
+notation''), e.\,g.\ \texttt{192.0.2.137}. Then, we also print
+out the destination address if it is part of the rule.
+\begin{lyxcode}
+~~~~~~~~\textbf{if}~(info->flags~\&~XT\_IPADDR\_DST)~\{~\\
+~~~~~~~~~~~~~~~~\textbf{if}~(info->flags~\&~XT\_IPADDR\_DST\_INV)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~printf(\textquotedbl{}!~\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~printf(\textquotedbl{}-{}-ipdst~\%s~\textquotedbl{},~\\
+~~~~~~~~~~~~~~~~~~~~~~~xtables\_ipaddr\_to\_numeric(\&info->dst.in));~\\
+~~~~~~~~\}~\\
+\}
+\end{lyxcode}
+Note that output from the \texttt{save} function shall always be numeric,
+i.\,e.\ no IP addresses may be transformed to \index{hostname}hostnames!
+
+
+\subsection{Status display~-- \index{print function}print function}
+
+In the same philosophy as the previous one, this function aims to
+print information about the rule, but in a freeform fashion. It is
+called by `\texttt{iptables -L}`, and you are free to output whatever
+you want, and how you want.
+\begin{lyxcode}
+\textbf{static~void}~ipaddr\_mt4\_print(\textbf{const~void~{*}}entry,~\\
+~~~~\textbf{\index{struct xt_entry_match@\texttt{struct xt\_entry\_match}}const~struct}~xt\_entry\_match~\textbf{{*}}match,~\textbf{int}~numeric)~\\
+\{~\\
+~~~~~~~~\textbf{const~struct}~xt\_ipaddr\_mtinfo~\textbf{{*}}info~=~(\textbf{const~void~{*}})match->data;~\\
+~\\
+~~~~~~~~\textbf{if}~(info->flags~\&~XT\_IPADDR\_SRC)~\{~\\
+~~~~~~~~~~~~~~~~printf(\textquotedbl{}src~IP~\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~\textbf{if}~(info->flags~\&~XT\_IPADDR\_SRC\_INV)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~printf(\textquotedbl{}!~\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~\textbf{if}~(numeric)~\\
+~~~~~~~~~~~~~~~~printf(\textquotedbl{}\%s~\textquotedbl{},~numeric~?~\\
+~~~~~~~~~~~~~~~~~~~~~~~xtables\_ipaddr\_to\_numeric(\&info->src.in)~:~\\
+~~~~~~~~~~~~~~~~~~~~~~~xtables\_ipaddr\_to\_anyname(\&info->src.in));~\\
+~~~~~~~~\}~\\
+~\\
+~~~~~~~~\textbf{if}~(info->flags~\&~XT\_IPADDR\_DST)~\{~\\
+~~~~~~~~~~~~~~~~printf(\textquotedbl{}dst~IP~\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~\textbf{if}~(info->flags~\&~XT\_IPADDR\_DST\_INV)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~printf(\textquotedbl{}!~\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~printf(\textquotedbl{}\%s~\textquotedbl{},~numeric~?~\\
+~~~~~~~~~~~~~~~~~~~~~~~xtables\_ipaddr\_to\_numeric(\&info->dst.in)~:~\\
+~~~~~~~~~~~~~~~~~~~~~~~xtables\_ipaddr\_to\_anyname(\&info->dst.in));~\\
+~~~~~~~~\}~\\
+\}
+\end{lyxcode}
+Here, we use \texttt{\index{xtables_ipaddr_to_anyname@\texttt{xtables\_ipaddr\_to\_anyname}}xtables\_ipaddr\_to\_anyname}
+in the \texttt{!numeric} case, to print a hostname when possible.
+The \texttt{numeric} case is triggered by the \texttt{-n} argument
+to iptables (`\texttt{iptables -nL}`), which instructs iptables to
+not do DNS lookups.
+
+
+\subsection{Option parsing~-- \index{parse function}parse function}
+
+This is the most important function because here, we verify if arguments
+are used correctly and set information we will share with the kernel
+part. It is called each time an option is found, so if the user provides
+two options, it will be called twice with the argument code provided
+in the variable \texttt{c}. The argument code for a specific option
+is set in the option table (see below).
+\begin{lyxcode}
+\textbf{static~int}~ipaddr\_mt4\_parse(\textbf{int}~c,~\textbf{char~{*}{*}}argv,~\textbf{int}~invert,~\\
+~~~~\textbf{unsigned~int~{*}}flags,~\textbf{const~void~{*}}entry,~\\
+~~~~\textbf{\index{struct xt_entry_match@\texttt{struct xt\_entry\_match}}struct}~xt\_entry\_match~\textbf{{*}{*}}match)~\\
+\{
+\end{lyxcode}
+The \texttt{match} pointer is passed to a couple of functions so we
+can work on the same data structure. Once the rule is loaded, the
+data that is pointed to will be copied to kernel-space. This way,
+the kernel module knows what the user asks to analyze (and that is
+the point, is it not?).
+\begin{lyxcode}
+~~~~~~~~\textbf{struct}~xt\_ipaddr\_mtinfo~\textbf{{*}}info~=~(\textbf{void~{*}})({*}match)->data;~\\
+~~~~~~~~\textbf{struct}~in\_addr~\textbf{{*}}addrs,~mask;~\\
+~~~~~~~~\textbf{unsigned~int}~naddrs;
+\end{lyxcode}
+The cast is needed here since \texttt{data} is of type \texttt{char~{*}},
+rather than \texttt{void~{*}}. Each command-line option, like \texttt{-{}-srcip},
+is assigned an integer value, stored in \texttt{c} here, to allow
+for specific actions to be done according to the inputted arguments.
+We will see later in this text how we map arguments to values.
+\begin{lyxcode}
+~~~~~~~~\textbf{switch}~(c)~\{
+\end{lyxcode}
+First, we check if the argument has been used more than once. If it
+appears to be the case, we call \texttt{\index{xtables_error@\texttt{xtables\_error}}xtables\_error},
+which will print the supplied error message and exit the program immediately
+with the status flag \texttt{\index{PARAMETER_PROBLEM@\texttt{PARAMETER\_PROBLEM}}PARAMETER\_PROBLEM}.
+Else, we set \texttt{flags} and \texttt{info->flags} to the \texttt{XT\_IPADDR\_SRC}
+value defined in our header's file, to tell the kernel module that
+we want to do something. We will see our header file later.
+
+Although both \texttt{flags} and \texttt{info->flags} seem to have
+the same purpose, but they really do not. The scope of \texttt{flags}
+is only this function (and the final check function), while \texttt{info->flags}
+is a field part of our structure which will be shared with the kernel.
+\begin{lyxcode}
+~~~~~~~~\textbf{case}~'1':~\textbf{/{*}~}\textrm{\textit{-{}-ipsrc}}\textbf{~{*}/}~\\
+~~~~~~~~~~~~~~~~\textbf{if}~({*}flags~\&~XT\_IPADDR\_SRC)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~xtables\_error(PARAMETER\_PROBLEM,~\textquotedbl{}xt\_ipaddr:~\textquotedbl{}~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textquotedbl{}Only~use~\textbackslash{}\textquotedbl{}-{}-ipsrc\textbackslash{}\textquotedbl{}~once!\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~{*}flags~|=~XT\_IPADDR\_SRC;~\\
+~~~~~~~~~~~~~~~~info->flags~|=~XT\_IPADDR\_SRC;
+\end{lyxcode}
+We verify whether the invert flag, '\texttt{!}', has been used on
+the command line (e.\,g.\ `\texttt{iptables -m ipaddr ! -{}-ipsrc
+192.168.0.137}`) and then set appropriate information in \texttt{info->flags}.
+There are a number of functions that take an IPv4/v6 address or hostname
+and turn it into a 32/128-bit entity. Here, we will use \index{xtables_ipparse_any@\texttt{xtables\_ipparse\_any}}\texttt{xtables\_ipparse\_any},
+which can take either a hostname or IP address, and will write the
+result to \texttt{addr} and \texttt{mask}. The \texttt{addrs} argument
+is used to store the addresses a host resolution might yield.
+\begin{lyxcode}
+~~~~~~~~~~~~~~~~\textbf{if}~(invert)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~info->flags~|=~XT\_IPADDR\_SRC\_INV;~\\
+~~~~~~~~~~~~~~~~xtables\_ipparse\_any(optarg,~\&addrs,~\&mask,~\&naddrs);~\\
+~~~~~~~~~~~~~~~~\textbf{if}~(naddrs~!=~1)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~xtables\_error(PARAMETER\_PROBLEM,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textquotedbl{}\%s~does~not~resolves~to~exactly~\textquotedbl{}
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textquotedbl{}one~address\textquotedbl{},~optarg);~\\
+~~~~~~~~~~~~~~~~\textbf{/{*}~}\textrm{\textit{Copy~the~single~address}}\textbf{~{*}/}~\\
+~~~~~~~~~~~~~~~~memcpy(\&info->src.in,~addrs,~\textbf{sizeof}({*}addrs));~\\
+~~~~~~~~~~~~~~~~\textbf{return}~true;
+\end{lyxcode}
+For demonstrational purposes, we will use \index{xtables_numeric_to_ipaddr@\texttt{xtables\_numeric\_to\_ipaddr}}\texttt{xtables\_numeric\_to\_ipaddr}
+instead for the destination address. It transforms exactly one IPv4
+address from dotted notation into a 32-bit entity:
+\begin{lyxcode}
+~~~~~~~~\textbf{case}~'2':~\textbf{/{*}~}\textrm{\textit{-{}-ipdst}}\textbf{~{*}/}~\\
+~~~~~~~~~~~~~~~~\textbf{if}~({*}flags~\&~XT\_IPADDR\_DST)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~xtables\_error(PARAMETER\_PROBLEM,~\textquotedbl{}xt\_ipaddr:~\textquotedbl{}~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textquotedbl{}Only~use~\textbackslash{}\textquotedbl{}-{}-ipdst\textbackslash{}\textquotedbl{}~once!\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~{*}flags~|=~XT\_IPADDR\_DST;~\\
+~~~~~~~~~~~~~~~~info->flags~|=~XT\_IPADDR\_DST;~\\
+~~~~~~~~~~~~~~~~\textbf{if}~(invert)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~info->flags~|=~XT\_IPADDR\_DST\_INV;~\\
+~~~~~~~~~~~~~~~~addrs~=~xtables\_numeric\_to\_ipaddr(optarg,~\&info->dst.in);~\\
+~~~~~~~~~~~~~~~~\textbf{if}~(addrs~==~NULL)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~xtables\_error(PARAMETER\_PROBLEM,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textquotedbl{}Parse~error~at~\%s\textbackslash{}n\textquotedbl{},~optarg);~\\
+~~~~~~~~~~~~~~~~memcpy(\&info->dst.in,~addrs,~\textbf{sizeof}({*}addrs));~\\
+~~~~~~~~~~~~~~~~\textbf{return}~true;~\\
+~~~~~~~~\}~\\
+~~~~~~~~\textbf{return}~false;~\\
+\}
+\end{lyxcode}
+Every time an option was recognized, the parse function should return
+\texttt{true}, and \texttt{false} otherwise. This is because the parse
+function is also passed options that potentially belong to other modules,
+and if our function returns \texttt{false}, other parse functions
+are probed whether they recognize the option. In essence, every time
+you load a new match with iptables's \texttt{-m name} option, the
+option table for that specific match is added to the top of the option
+table search list.
+
+
+\subsection{Option validation~-- \index{check function}check function}
+
+This function is sort of a last chance for sanity checks. It is called
+when the user enters a new rule, after argument parsing is done and
+\texttt{flags} is filled with whatever values you chose to assign
+to it in your parse function.
+\begin{lyxcode}
+\textbf{static~void}~ipaddr\_mt\_check(\textbf{unsigned~int}~flags)~\\
+\{~\\
+~~~~~~~~\textbf{if}~(flags~==~0)~\\
+~~~~~~~~~~~~~~~~xtables\_error(PARAMETER\_PROBLEM,~\textquotedbl{}xt\_ipaddr:~You~need~to~\textquotedbl{}~\\
+~~~~~~~~~~~~~~~~~~~~~~~~\textquotedbl{}specify~at~least~\textbackslash{}\textquotedbl{}-{}-ipsrc\textbackslash{}\textquotedbl{}~or~\textbackslash{}\textquotedbl{}-{}-ipdst\textbackslash{}\textquotedbl{}.\textquotedbl{});~\\
+\}
+\end{lyxcode}
+It is generally used to ensure that a minimum set of options or flags
+have been specified. Flags that conflict with one another, including
+an option with itself~--- in other words, specifying an option twice~---
+is usually handled at the earliest point possible, in the parse function.
+But there are option combinations for which only the final check function
+makes sense to test them, as parse cannot ``look forward''.
+
+
+\subsection{Options structure}
+
+Earlier, we discussed that every option is mapped to a single argument
+code value. The \index{struct option@\texttt{struct option}}\texttt{struct
+option} is the way to achieve it. For more information about this
+structure, I strongly suggest you read \texttt{getopt}(3). You need
+to include\texttt{ \index{getopt.h@\textit{getopt.h}}<getopt.h>}
+for it.
+\begin{lyxcode}
+\textbf{static~const~struct}~option~ipaddr\_mt\_opts{[}{]}~=~\{~\\
+~~~~~~~~\{.name~=~\textquotedbl{}ipsrc\textquotedbl{},~.has\_arg~=~true,~.val~=~'1'\},~\\
+~~~~~~~~\{.name~=~\textquotedbl{}ipdst\textquotedbl{},~.has\_arg~=~true,~.val~=~'2'\},~\\
+~~~~~~~~\{NULL\},~\\
+\};
+\end{lyxcode}
+
+\subsection{Rule initialization~-- \index{init function}init function}
+
+The \texttt{init} function can be used to populate our \texttt{xt\_ipaddr\_mtinfo}
+structure with defaults before \texttt{parse} is called. If you do
+not need it, just omit initialization of the \texttt{init} field in
+our \texttt{ipaddr\_mt\_reg} structure (like it was done above).
+\begin{lyxcode}
+\textbf{static~void}~ipaddr\_mt\_init(\textbf{\index{struct xt_entry_match@\texttt{struct xt\_entry\_match}}struct}~xt\_entry\_match~\textbf{{*}}match)~\\
+\{~\\
+~~~~~~~~\textbf{struct}~xt\_ipaddr\_mtinfo~\textbf{{*}}info~=~(\textbf{void~{*}})match->data;~\\
+~\\
+~~~~~~~~\index{inet_pton@\texttt{inet\_pton}}inet\_pton(PF\_INET,~\textquotedbl{}192.0.2.137\textquotedbl{},~\&info->dst.in);~\\
+\}
+\end{lyxcode}
+In this example, the default destination addresses is set to 192.0.2.137,
+and unless the user overrides it with \texttt{-{}-ipdst}, this address
+will be used. (Actually, the destination address will not be tested
+in the \textsf{xt\_ipaddr} kernel module unless \texttt{-{}-ipdst}
+is given, so this example is sort of a no-op.) The initialization
+is often not needed because the memory pointed to by \texttt{match->data}
+is already zeroed so that iptables extensions do not need to take
+care of clearing \texttt{match->data} before being able to use it
+in the parse function.
+
+
+\subsection{Short usage text~-- \index{help function}help function}
+
+This function is called by `\texttt{iptables -m match\_name -h}`.
+It should give an overview of the available options and a very brief
+short description. Everything that is longer than one line should
+be put into the manpage (see section~\ref{sub:iptables-documentation}).
+\begin{lyxcode}
+\textbf{static~void}~ipaddr\_mt\_help(\textbf{void})~\\
+\{~\\
+~~~~~~~~printf(~\\
+\textquotedbl{}ipaddr~match~options:\textbackslash{}n\textquotedbl{}~\\
+\textquotedbl{}{[}!{]}~-{}-ipsrc~addr~~~~Match~source~address~of~packet\textbackslash{}n\textquotedbl{}~\\
+\textquotedbl{}{[}!{]}~-{}-ipdst~addr~~~~Match~destination~address~of~packet\textbackslash{}n\textquotedbl{}~\\
+);~\\
+\}
+\end{lyxcode}
+
+\subsection{\index{IPv6}IPv6 support}
+
+Similarly to the kernel module, you will also want to add IPv6 support
+in the iptables extension. For that, we need a separate \texttt{struct
+xtables\_match}.
+\begin{lyxcode}
+\textbf{\index{struct xtables_match@\texttt{struct xtables\_match}}static~struct}~xtables\_match~ipaddr\_mt6\_reg~=~\{~\\
+~~~~~~~~.version~~~~~~~=~\index{XTABLES_VERSION@\texttt{XTABLES\_VERSION}}XTABLES\_VERSION,~\\
+~~~~~~~~.name~~~~~~~~~~=~\textquotedbl{}ipaddr\textquotedbl{},~\\
+~~~~~~~~.revision~~~~~~=~0,~\\
+~~~~~~~~.family~~~~~~~~=~NFPROTO\_IPV6,~\\
+~~~~~~~~.size~~~~~~~~~~=~\index{XT_ALIGN@\texttt{XT\_ALIGN}}XT\_ALIGN(\textbf{sizeof}(\textbf{struct}~xt\_ipaddr\_mtinfo)),~\\
+~~~~~~~~.userspacesize~=~XT\_ALIGN(\textbf{sizeof}(\textbf{struct}~xt\_ipaddr\_mtinfo)),~\\
+~~~~~~~~.help~~~~~~~~~~=~ipaddr\_mt\_help,~\\
+~~~~~~~~.parse~~~~~~~~~=~ipaddr\_mt6\_parse,~\\
+~~~~~~~~.final\_check~~~=~ipaddr\_mt\_check,~\\
+~~~~~~~~.save~~~~~~~~~~=~ipaddr\_mt6\_opts,~\\
+~~~~~~~~.print~~~~~~~~~=~ipaddr\_mt6\_print,~\\
+~~~~~~~~.opts~~~~~~~~~~=~ipaddr\_mt\_opts,~\\
+\};
+\end{lyxcode}
+As mentioned earlier, a few functions can be shared, such as \texttt{ipaddr\_mt\_help}
+or \texttt{ipaddr\_\-mt\_check}, because they are independent of
+the address family used. For the others, we need IPv6-specific parse,
+save and print functions that handle IPv6 addresses:
+\begin{lyxcode}
+\textbf{static~int}~ipaddr\_mt6\_parse(\textbf{int}~c,~\textbf{char~{*}{*}}argv,~\textbf{int}~invert,~\\
+~~~~\textbf{unsigned~int~{*}}flags,~\textbf{const~void~{*}}entry,~\\
+~~~~\textbf{\index{struct xt_entry_match@\texttt{struct xt\_entry\_match}}struct}~xt\_entry\_match~\textbf{{*}{*}}match)~\\
+\{~\\
+~~~~~~~~\textbf{struct}~xt\_ipaddr\_mtinfo~\textbf{{*}}info~=~(\textbf{void~{*}})({*}match)->data;~\\
+~~~~~~~~\textbf{struct}~in6\_addr~\textbf{{*}}addrs;~\\
+~\\
+~~~~~~~~\textbf{switch}~(c)~\{~\\
+~~~~~~~~\textbf{case}~'1':~\textbf{/{*}~}\textrm{\textit{-{}-ipsrc}}\textbf{~{*}/}~\\
+~~~~~~~~~~~~~~~~\textbf{if}~({*}flags~\&~XT\_IPADDR\_SRC)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~xtables\_error(PARAMETER\_PROBLEM,~\textquotedbl{}xt\_ipaddr:~\textquotedbl{}~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textquotedbl{}Only~use~\textbackslash{}\textquotedbl{}-{}-ipsrc\textbackslash{}\textquotedbl{}~once!\textquotedbl{});~\\
+~~~~~~~~~~~~~~~~{*}flags~|=~XT\_IPADDR\_SRC;~\\
+~~~~~~~~~~~~~~~~info->flags~|=~XT\_IPADDR\_SRC;~\\
+~~~~~~~~~~~~~~~~\textbf{if}~(invert)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~info->flags~|=~XT\_IPADDR\_SRC\_INV;~\\
+~~~~~~~~~~~~~~~~addrs~=~xtables\_numeric\_to\_ip6addr(optarg);~\\
+~~~~~~~~~~~~~~~~\textbf{if}~(addrs~==~NULL)~\\
+~~~~~~~~~~~~~~~~~~~~~~~~xtables\_error(PARAMETER\_PROBLEM,~\textquotedbl{}xt\_ipaddr:~\textquotedbl{}~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textquotedbl{}Parse~error~at~\%s\textquotedbl{},~optarg);~\\
+~~~~~~~~~~~~~~~~memcpy(\&info->src.in6,~addrs,~\textbf{sizeof}({*}addr));~\\
+~~~~~~~~~~~~~~~~\textbf{return}~true;~\\
+~~~~~~~~\}~\\
+~~~~~~~~\textbf{return}~false;~\\
+\}
+\end{lyxcode}
+I have left out the \texttt{case '2'}, you can surely add it yourself
+(it is in the \texttt{libxt\_ipaddr.c} file in the Xtables-addons
+git repository anyway). The only interesting change here is that we
+use \texttt{\index{xtables_numeric_to_ip6addr@\texttt{xtables\_numeric\_to\_ip6addr}}xtables\_numeric\_to\_ip6addr},
+and the appropriate \texttt{\index{struct in6_addr@\texttt{struct in6\_addr}}in6\_addr}
+structures this function takes (\texttt{->src.in6}, \texttt{->dst.in6}).
+You should also be able to write the save and print functions; all
+that is needed is \index{xtables_ip6addr_to_numeric@\texttt{xtables\_ip6addr\_to\_numeric}}\texttt{xtables\_ip6addr\_to\_numeric}
+and \index{xtables_ip6addr_to_anyname@\texttt{xtables\_ip6addr\_to\_anyname}}\texttt{xtables\_ip6addr\_to\_anyname},
+respectively. Add registering the \texttt{ipaddr\_mt6\_reg} structure
+to \texttt{\_init}, and you are done:
+\begin{lyxcode}
+\textbf{static~void}~\_init(\textbf{void})~\\
+\{~\\
+~~~~~~~~xtables\_register\_match(\&ipaddr\_mt4\_reg);~\\
+~~~~~~~~xtables\_register\_match(\&ipaddr\_mt6\_reg);~\\
+\}
+\end{lyxcode}
+
+\subsection{Documentation\label{sub:iptables-documentation}}
+
+The \texttt{help} function should only give a really short overview
+of the available options. Some iptables extensions already have so
+many options~--- yet the minimum amount of necessary help text~---
+that it fills a screenful. Please take the time to write anything
+else that you want to make the user aware of into a separate \index{manpage}manpage
+file. When \textsf{iptables} is built, the manpage files are merged
+into one, to complete \textsf{iptables.8} and \textsf{ip6tables.8}.
+The build process will create a subsection for the module, so we do
+not need to. The man text could be:
+\begin{lyxcode}
+The~ipaddr~module~matches~on~source~and/or~destination~IP~address.~\\
+.TP~\\
+{[}\textbackslash{}fB\textbf{!}\textbackslash{}fP{]}~\textbackslash{}fB\textbf{-{}-ipsrc}\textbackslash{}fP~\textbackslash{}fI\textit{addr}\textbackslash{}fP~\\
+Match~packets~that~have~\textbackslash{}fI\textit{addr}\textbackslash{}fP~as~source~address.~\\
+.TP~\\
+{[}\textbackslash{}fB\textbf{!}\textbackslash{}fP{]}~\textbackslash{}fB\textbf{-{}-ipdst}\textbackslash{}fP~\textbackslash{}fI\textit{addr}\textbackslash{}fP~\\
+Match~packets~that~have~\textbackslash{}fI\textit{addr}\textbackslash{}fP~as~destination~address.~\\
+.PP~\\
+The~ipaddr~module~serves~only~as~a~demonstration.~It~is~equivalent~to~\\
+the~iptables~\textbackslash{}fB\textbf{-s}\textbackslash{}fP~and~\textbackslash{}fB\textbf{-d}\textbackslash{}fP~options,~but~ipaddr~does~not~support~\\
+masks.
+\end{lyxcode}
+Granted, our module is simple, and so is the manpage. (It also serves
+as an introduction to write \index{nroff}nroff markup.) When you
+build \textsf{iptables} and look at the completed manpage afterwards,
+using `\texttt{man -l iptables.8}` perhaps or a viewer of your choice,
+you can see that \texttt{\textbackslash{}fB} is for bold, \texttt{\textbackslash{}fI}
+for italic and \texttt{\textbackslash{}fP} for normal%
+\footnote{It actually means ``previous'' and acts like \texttt{</b>} or \texttt{</i>}
+does in HTML for a preceding \texttt{<b>} and \texttt{<i>}, respectively.%
+}. \texttt{.TP} will do an indentation appropriate for option and description,
+and \texttt{.PP} will return to the default paragraph indentation.
+
+
+\subsection{Building the extension}
+
+
+\subsubsection{Using the Xtables-addons package}
+
+Place the modules' files~--- \texttt{xt\_ipaddr.c} and \texttt{xt\_ipaddr.h}~---
+into the \texttt{extensions/} directory and modify the \texttt{Kbuild}
+file to include \texttt{xt\_ipaddr.o} in the object list and the \texttt{mconfig}
+file to give \texttt{build\_ipaddr} a value, like the rest of the
+extensions. Please read the \texttt{INSTALL} file on how to correctly
+configure and compile \textsf{xtables-addons}.
+
+Place the extension module \texttt{libxt\_ipaddr.c} into the \texttt{extensions/}
+directory and modify the \textsf{Mbuild} file to include \texttt{libxt\_ipaddr.so}
+in the object list and the \texttt{mconfig} file to give \texttt{build\_ipaddr}
+a value, if you have not done so yet.
+
+
+\paragraph*{mconfig:}
+\begin{lyxcode}
+build\_ipaddr=m
+\end{lyxcode}
+
+\paragraph*{extensions/Mbuild:}
+\begin{lyxcode}
+obj-\$\{build\_ipaddr\}~+=~libxt\_ipaddr.so
+\end{lyxcode}
+Please read the \texttt{INSTALL} file on how to correctly configure
+and compile \textsf{xtables-addons}.
+
+To make use of the module without copying it to the xtables module
+directory, you will have to use something like:
+\begin{lyxcode}
+XTABLES\_LIBDIR=\$PWD:/usr/libexec/xtables~iptables~-A~INPUT~-m~ipaddr~...;
+\end{lyxcode}
+when you are inside the \texttt{extensions} directory. The \texttt{XTABLES\_LIBDIR}
+environment variable, if set, instructs \textsf{iptables} to search
+for extensions in the given directories. You want to make sure the
+original directory~--- \texttt{/usr\slash{}libexec\slash{}xtables}
+here, but it might be different on your system or if you had just
+previously built iptables in your own home directory.
+
+
+\subsubsection{Standalone package}
+
+To compile the iptables extension, all you need is the development
+header files from iptables (usually in a package called \textsf{iptables-devel})
+and some means to turn \texttt{libxt\_ipaddr.c} into a shared library
+object, \texttt{libxt\_ipaddr.so}. You can use a Makefile such as:
+\begin{lyxcode}
+CFLAGS~=~-O2~-Wall~\\
+lib\%.so:~lib\%.o~\\
+~~~~~~~~gcc~-shared~-o~\$@~\$\textasciicircum{};~\\
+lib\%.o:~lib\%.c~\\
+~~~~~~~~gcc~\$\{CFLAGS\}~-D\_INIT=lib\${*}\_init~-c~-o~\$@~\$<;
+\end{lyxcode}
+and then call `\texttt{make libxt\_ipaddr.so}`, or wire up more Makefile
+logic to automatically build the targets.
+
+
+\subsubsection{In-tree modifications to the iptables package}
+
+The filename for the extension source code should be \texttt{libxt\_ipaddr.c}
+and be put into the \texttt{extensions/} directory. There is no need
+to edit a Makefile, as it will automatically glob up all files that
+match \texttt{libxt\_}{*}\texttt{.c}. Now build iptables. To enable
+debugging, you can override the default \texttt{CFLAGS} with the debug
+flag. \texttt{-ggdb3} includes lots of debug, in the preferred format
+and with GDB extensions (=~all that you could ever need). It is also
+highly recommended to pass in \texttt{-O0} to turn off optimization
+(an ``O'' followed by a zero) and therefore instruction reordering,
+otherwise gdb will jump around source lines, making debugging hard.
+\begin{lyxcode}
+./configure~CFLAGS=\textquotedbl{}-ggdb3~-O0\textquotedbl{};
+\end{lyxcode}
+iptables has recently moved to autotools, so uses configure. It also
+does not require a kernel source tree (anymore). Please read the \texttt{INSTALL}
+file to find out more!
+
+To test your extension without having to install \textsf{iptables}
+to a system location, in other words, to run it from the build directory,
+set the \texttt{-{}-with-xtlibdir} option:
+\begin{lyxcode}
+./configure~-{}-with-xtlibdir=\textquotedbl{}\$PWD/extensions\textquotedbl{};
+\end{lyxcode}
+then you can test \textsf{ipaddr}:
+\begin{lyxcode}
+./iptables~-m~ipaddr~-h;~\\
+./iptables~-A~INPUT~-m~ipaddr~-{}-ipsrc~192.0.2.137;~\\
+./ip6tables~-A~INPUT~-m~ipaddr~-{}-ipsrc~2001:db8::1302;
+\end{lyxcode}
+To see if it is working, check either the printk messages that accumulated
+in the kernel log, or use `\texttt{iptables -vL}` to watch the counters
+increasing. Make sure that either \texttt{xt\_ipaddr.ko} can be loaded
+by modprobe or is already loaded.
+
+
+\subsection{Summary}
+
+In this part, we discussed the purpose of the iptables extension module.
+We covered the internals of each function and how the main structure
+\texttt{xt\_ipaddr\_\-mtinfo} is used to keep information that will
+be copied to the kernel side for further consideration. We also looked
+at the iptables structure and how to register our new extension.
+
+\clearpage{}
+
+
+\section{Tricks and traps}
+
+
+\subsection{The packet buffer\label{sub:xttricks-skbuff}}
+
+\texttt{\index{struct sk_buff@\texttt{struct sk\_buff}}struct sk\_buff}
+is an essential structure throughout networking~--- it carries your
+data; data to match on, or to modify.
+
+The life of an skb begins when the kernel, specifically a network
+driver, reads a packet from the network card's buffer into RAM%
+\footnote{For an example, see \texttt{drivers\slash{}net\slash{}niu.c}, function
+\texttt{niu\_process\_rx\_pkt}.%
+}. At this point, all you essentially have is a pointer to said buffer
+in \texttt{skb->data}, and its length in \texttt{skb->len}. \texttt{skb->data}
+is actually a pointer that will move as the packet is passed on to
+the upper layers. In case of an Ethernet driver, the driver will call
+\texttt{eth\_type\_trans}, which will reset the MAC header pointer
+by calling \texttt{\index{skb_reset_mac_header@\texttt{skb\_reset\_mac\_header}}skb\_\-reset\_\-mac\_\-header}
+on the skb%
+\footnote{See \texttt{net\slash{}ethernet\slash{}eth.c}, function \texttt{eth\_type\_trans}.%
+}. The function does no more than copy (the value of) \texttt{skb->data}
+to \texttt{skb->mac\_header} (implementation might vary). \texttt{eth\_\-type\_\-trans}
+will then advance \texttt{skb->data} by the size of the Ethernet header
+and decrease \texttt{skb->len} by the same amount using the \texttt{\index{skb_pull@\texttt{skb\_pull}}skb\_pull}
+function, so that \texttt{skb->data} will be pointing to the start
+of the layer\nobreakdash-3 header and \texttt{skb->len} contains
+the remaining length. At this point it is guaranteed that the layer\nobreakdash-2
+header is complete and that the memory block pointed to by the pointer
+that is returned by \texttt{\index{skb_mac_header@\texttt{skb\_mac\_header}}skb\_mac\_header}
+is accessible for up to \texttt{skb->mac\_len} bytes. Afterwards,
+the skb is handed to the generic receive routine, \texttt{\index{netif_receive_skb@\texttt{netif\_receive\_skb}}netif\_\-receive\_skb}
+or any of thelikes.
+
+\texttt{netif\_\-receive\_skb} resets the network and transport header
+pointers, using \texttt{\index{skb_reset_network_header@\texttt{skb\_reset\_network\_header}}skb\_\-reset\_\-network\_\-header}
+and \texttt{\index{skb_reset_transport_header@\texttt{skb\_reset\_transport\_header}}skb\_\-reset\_\-transport\_\-header},
+respectively. Packets will now%
+\footnote{See \texttt{net\slash{}core\slash{}dev.c}, function \texttt{netif\_receive\_skb}.%
+} be sent to ingress shaping, Ebtables if a bridge device was involved,
+macvlan devices, and finally the layer\nobreakdash-3 protocol handler%
+\footnote{See \texttt{net\slash{}ipv6\slash{}ip6\_input.c}, function \texttt{ipv6\_rcv}.%
+}. As packets have not yet been processed by layer~4 yet, you cannot
+rely on the \texttt{\index{skb_transport_header@\texttt{skb\_transport\_header}}skb\_\-transport\_\-header}
+function to return a meaningful value. For IPv4 match extensions,
+you can use \texttt{struct xt\_match\_param->thoff} that \textsf{ip\_tables}/\textsf{xt\_ip}
+filled in. For IPv6 match extensions, this field will only be filled
+when the rule contains a protocol specified with the \textsf{ip6tables}
+\texttt{-p} flag, e.\,g.\ ``\texttt{-p tcp}''. In all other cases,
+\texttt{\index{ip_hdrlen@\texttt{ip\_hdrlen}}ip\_hdrlen} or \texttt{\index{ipv6_skip_exthdr@\texttt{ipv6\_skip\_exthdr}}ipv6\_skip\_exthdr}
+has to be called manually. The reason Netfilter/Xtables does not set
+the transport header pointer in the skb or always provide the transport
+header offset is likely to be due to performance considerations.
+
+The layer\nobreakdash-3 header is validated by the corresponding
+layer\nobreakdash-3 protocol handler so that you can always safely
+use \texttt{\index{ipv6_hdr@\texttt{ipv6\_hdr}}ipv6\_hdr} in an extension
+that is registered for the \texttt{\index{NFPROTO_IPV6@\texttt{NFPROTO\_IPV6}}NFPROTO}\_\texttt{IPV6}
+family, and \texttt{\index{ip_hdr@\texttt{ip\_hdr}}ip\_hdr} for \texttt{\index{NFPROTO_IPV4@\texttt{NFPROTO\_IPV4}}NFPROTO\_IPV4},
+respectively. Because packets are passed to Ebtables first before
+they go to any layer\nobreakdash-3 handlers, \texttt{\index{NFPROTO_BRIDGE@\texttt{NFPROTO\_BRIDGE}}NFPROTO\_BRIDGE}
+extensions cannot use the \texttt{ip\_hdr} and/or \texttt{ipv6\_hdr}
+functions directly, but must use the safe boundary-checking function
+\texttt{\index{skb_header_pointer@\texttt{skb\_header\_pointer}}skb\_\-header\_\-pointer}
+to obtain any data. \texttt{\index{NFPROTO_UNSPEC@\texttt{NFPROTO\_UNSPEC}}NFPROTO\_UNSPEC}
+extensions generally fall under the same rule, because they are valid
+for all families\slash{}protocols, however, you can examine \texttt{struct
+xt\_match\_param->family} and/or \texttt{struct xt\_target\_param->family}
+and check which Xtables family invoked the match\slash{}target function.
+If it is \texttt{NFPROTO\_IPV4}\slash{}\texttt{NFPROTO\_IPV6} you
+can use \texttt{ip\_hdr}\slash{}\texttt{ipv6\_hdr}, too.
+
+In the output path, things are done in reverse. An skb of appropriate
+size is allocated and filled with your data. \texttt{skb->data} as
+such will point to the data that is queued for being sent out, and
+\texttt{skb->len} will contain its length. The TCP send function will
+then call \texttt{\index{skb_push@\texttt{skb\_push}}skb\_push} to
+make room for the TCP header in front of \texttt{skb->data}. It does
+so by decreasing \texttt{skb->data} and increasing \texttt{skb->len}.
+and calling \texttt{skb\_\-reset\_\-transport\_\-header}, so that
+\texttt{skb->transport\_header} will point to what \texttt{skb->data}
+currently points to. This is repeated for all the lower layers; once
+it is the IP layer's turn, \texttt{skb\_push} is used again to stack
+the layer\nobreakdash-3 header onto it and to then reset the network
+header to the data pointer, etc. Note that the transport header pointer
+is set by the time Xtables is called in the output path, so you may
+take this shortcut if useful.
+
+
+\subsection{Registering multiple structures at once\label{sub:xttricks-multi}}
+
+As we have seen earlier in section~\ref{sub:xtmatch-ipv6}, trying
+to register multiple structures at once can become a tedious job with
+regard to the error path. Xtables provides four convenient functions
+to (un)register arrays of matches and targets. When applied to our
+code, the \texttt{ipaddr\_mt\_reg} structure and init and exit functions
+now look like this:
+\begin{lyxcode}
+\textbf{\index{struct xt_match@\texttt{struct xt\_match}}static~struct}~xt\_match~ipaddr\_mt\_reg{[}{]}~\index{__read_mostly@\texttt{\_\_read\_mostly}}\_\_read\_mostly~=~\{~\\
+~~~~~~~~\{~\\
+~~~~~~~~~~~~~~~~.name~~~~~~=~\textquotedbl{}ipaddr\textquotedbl{},~\\
+~~~~~~~~~~~~~~~~.revision~~=~0,~\\
+~~~~~~~~~~~~~~~~.family~~~~=~\index{NFPROTO_IPV4@\texttt{NFPROTO\_IPV4}}NFPROTO\_IPV4,~\\
+~~~~~~~~~~~~~~~~.match~~~~~=~ipaddr\_mt4,~\\
+~~~~~~~~~~~~~~~~.matchsize~=~\textbf{sizeof}(\textbf{struct}~xt\_ipaddr\_mtinfo),~\\
+~~~~~~~~~~~~~~~~.me~~~~~~~~=~THIS\_MODULE,~\\
+~~~~~~~~\},~\\
+~~~~~~~~\{~\\
+~~~~~~~~~~~~~~~~.name~~~~~~=~\textquotedbl{}ipaddr\textquotedbl{},~\\
+~~~~~~~~~~~~~~~~.revision~~=~0,~\\
+~~~~~~~~~~~~~~~~.family~~~~=~\index{NFPROTO_IPV6@\texttt{NFPROTO\_IPV6}}NFPROTO\_IPV6,~\\
+~~~~~~~~~~~~~~~~.match~~~~~=~ipaddr\_mt6,~\\
+~~~~~~~~~~~~~~~~.matchsize~=~\textbf{sizeof}(\textbf{struct}~xt\_ipaddr\_mtinfo),~\\
+~~~~~~~~~~~~~~~~.me~~~~~~~~=~THIS\_MODULE,~\\
+~~~~~~~~\},~\\
+\};~\\
+~\\
+\textbf{static~int}~\_\_init~ipaddr\_mt\_init(\textbf{void})~\\
+\{~\\
+~~~~~~~~\textbf{return}~\index{xt_register_matches@\texttt{xt\_register\_matches}}xt\_register\_matches(ipaddr\_mt\_reg,~\\
+~~~~~~~~~~~~~~~\index{ARRAY_SIZE@\texttt{ARRAY\_SIZE}}ARRAY\_SIZE(ipaddr\_mt\_reg));~\\
+\}~\\
+~\\
+\textbf{static~void}~\_\_exit~ipaddr\_mt\_exit(\textbf{void})~\\
+\{~\\
+~~~~~~~~\index{xt_unregister_matches@\texttt{xt\_unregister\_matches}}xt\_unregister\_matches(ipaddr\_mt\_reg,~ARRAY\_SIZE(ipaddr\_mt\_reg));~\\
+\}
+\end{lyxcode}
+
+\subsection{Using \index{connection tracking}connection tracking modules\label{sub:xttricks-conntrack}}
+
+Sometimes you want to operate on connections rather than packets.
+For that to be successful, packets must actually be inspected by the
+connection tracking code~--- essentially making Netfilter stateful.
+Xtables extensions that require connection tracking will try to load
+it as needed. One way this can happen is due to symbol dependencies,
+i.\,e.\ a named function or variable is needed. All of the IPv4
+modules that do stateful NAT will generally make use of the \texttt{nf\_nat\_\-setup\_\-info}
+symbol from \texttt{nf\_conntrack.ko}. The dependencies between kernel
+modules are computed at compile time%
+\footnote{Actually, link time~--- it is when \textsf{modpost} runs. I chose
+the ``compile-time'' wording because it certainly is not at runtime
+during \textsf{modprobe}. (And neither at \textsf{depmod} time.)%
+}. \textsf{modprobe}%
+\footnote{\textsf{insmod} does not do automatically load dependencies and thus
+often ``fails'' because symbols from dependent modules are not yet
+registered in the kernel.%
+} adheres to the ``depends-on'' names listed in a compiled kernel
+module and loads the dependencies first, for example \texttt{nf\_conntrack.ko}
+before \texttt{ipt\_MASQUERADE.ko}. Such dependencies are essential.
+The \textsf{MASQUERADE} code just cannot run without \texttt{\index{nf_nat_setup_info@\texttt{nf\_nat\_setup\_info}}nf\_nat\-\_setup\-\_info},
+so a failure to load \texttt{nf\_conntrack.ko} results in a failure
+to load \texttt{ipt\_MASQUERADE.ko}.
+
+Then there are run-time dependencies. It does not make much sense
+to load IPv6 connection tracking if you never use IPv6, so it is preferable
+to not load it when not needed. But once required, it will be requested
+by the kernel, which in turn calls the \textsf{modprobe} userspace
+binary itself. Run-time dependencies are allowed to fail to resolve,
+and code using such either tries something else or aborts gracefully.
+\begin{lyxcode}
+\textbf{static~bool}~conntrack\_mt\_check(\textbf{\index{struct xt_mtchk_param@\texttt{struct xt\_mtchk\_param}}const~struct}~xt\_mtchk\_param~\textbf{{*}}par)~\\
+\{~\\
+~~~~~~~~\textbf{return}~nf\_ct\_l3proto\_try\_module\_get(par->family)~==~0;
+
+\}
+\end{lyxcode}
+This is the very quick way how to do it. Once a rule that uses the
+\textsf{conntrack} match is inserted, it will load the appropriate
+layer\nobreakdash-3 connection tracking module, because without,
+it will not be possible to get the connection structure (\texttt{struct
+nf\_conn}) for a particular packet in the main match function~---
+the \texttt{\index{nf_ct_get@\texttt{nf\_ct\_get}}nf\_ct\_get} function
+that is used to obtain the associated connection for a packet just
+returns \texttt{NULL} and the whole match never matches.
+
+Connection tracking is split into multiple modules and categories.
+First of all we have the core, \textsf{nf\_conntrack}, which actually
+includes all the layer\nobreakdash-4 trackers. Then there are currently
+two layer\nobreakdash-3 trackers, \textsf{\index{nf_conntrack_ipv4@\textsf{nf\_conntrack\_ipv4}}nf\_conntrack\_ipv4}
+and \textsf{\index{nf_conntrack_ipv6@\textsf{nf\_conntrack\_ipv6}}nf\_conntrack\_ipv6}.
+Lastly there are layer\nobreakdash-5 trackers, such as \textsf{nf\_conntrack\_irc}.
+
+\texttt{\index{nf_ct_l3proto_module_try_get@\texttt{nf\_ct\_l3proto\_module\_try\_get}}nf\_ct\_\-l3proto\_\-module\_\-try\_get}
+tries to load the module appropriate for the address family used,
+the latter of which actually depends on whether you tried to insert
+an IPv4 \textsf{ip\_tables} rule or an IPv6 \textsf{ip6\_tables} rule
+and on the \texttt{xt\_match} structure (all of this equally applies
+to targets) that was invoked as part of it. It will also increase
+the reference count of the layer\nobreakdash-3 protocol module so
+that it cannot be removed using \textsf{rmmod} while the ip\_tables
+rule is in place. Only after all rules depending on connection tracking
+(ct) have been removed, the ct module may be removed too. It is therefore
+important to drop the reference count once a rule is removed:
+\begin{lyxcode}
+\textbf{static~void}~conntrack\_mt\_destroy(\textbf{\index{struct xt_mtdtor_param@\texttt{struct xt\_mtdtor\_param}}const~struct}~xt\_mtdtor\_param~\textbf{{*}}par)~\\
+\{~\\
+~~~~~~~~\index{nf_ct_l3proto_module_put@\texttt{nf\_ct\_l3proto\_module\_put}}nf\_ct\_l3proto\_module\_put(par->family);~\\
+\}
+\end{lyxcode}
+The following \textsf{lsmod} excerpt indicates that connection tracking
+is in use. I have two rules that use the conntrack match, so that
+accounts for two references to \textsf{xt\_conntrack} and two references
+to \textsf{nf\_conntrack\_ipv4}. The other two references to \textsf{nf\_conntrack\_ipv4}
+come from \textsf{iptable\_nat}%
+\footnote{It is listed after all~--- has a symbol dependency.%
+} and \textsf{nf\_nat}%
+\footnote{It seems to irregularly grab \textsf{nf\_conntrack\_ipv4} however.%
+}.
+\begin{lyxcode}
+\textbf{Module~~~~~~~~~~~~~Used~by}~\\
+iptable\_nat~~~~~~~~1~\\
+nf\_nat~~~~~~~~~~~~~3~ipt\_REDIRECT,ipt\_MASQUERADE,iptable\_nat~\\
+xt\_conntrack~~~~~~~2~\\
+nf\_conntrack\_ipv4~~4~iptable\_nat~\\
+nf\_conntrack~~~~~~~5~ipt\_MASQUERADE,~iptable\_nat,~nf\_nat,~\\
+~~~~~~~~~~~~~~~~~~~~~xt\_conntrack,~nf\_conntrack\_ipv4
+\end{lyxcode}
+
+\subsection{Alignment of extension data\label{sub:xttricks-align}}
+
+The kernel as well as userspace can run in various execution environments
+and combinations. You can have a 32\nobreakdash-bit kernel with a
+32\nobreakdash-bit userspace, a \index{64-bit@64\nobreakdash-bit}64\nobreakdash-bit
+kernel with a 64\nobreakdash-bit userspace and a 64\nobreakdash-bit
+kernel with a 32\nobreakdash-bit userspace. For all these cases,
+data needs to be interchangeable. When a rule is transferred from
+or to the kernel, it is \index{serialization}serialized into a contiguous
+binary stream. The structures are sent as they appear in memory, so
+that the meaning of the binary blob is actually dependent on the remote
+side's interpretation. It is therefore important that both userspace
+and kernel use the same struct definitions on the blob, and actually
+even a definition that has the same binary representation in both
+worlds. Types like \texttt{long} can have different sizes in different
+environments, hence the use of fixed types like \texttt{\index{__u32@\texttt{\_\_u32}}\_\_u32}
+is mandatory.
+
+In a struct, types are by default only \index{alignment}aligned as
+much as required by the type and environment. Looking at most used
+hardware, i.\,e.\ x86, x86\_64, and some others like sparc64, a
+\texttt{\index{__u16@\texttt{\_\_u16}}\_\_u16} must be 2\nobreakdash-aligned
+(must start at an address divisible by to 2), and \texttt{\_\_u32}
+must be 4\nobreakdash-aligned. Things get interesting with \texttt{\index{__u64@\texttt{\_\_u64}}\_\_u64}~---
+in a 64\nobreakdash-bit environment, it must be 8\nobreakdash-aligned,
+while on 32\nobreakdash-bit, 4\nobreakdash-alignment suffices because
+a 32\nobreakdash-bit environment does not process 64\nobreakdash-bit
+quantities in one operation, but instead splits it up into multiple
+32\nobreakdash-bit operations. GCC 4.x uses 8\nobreakdash-alignment
+for 64\nobreakdash-bit quantities even on x86, but not so on some
+ARM configurations, and CRIS is said to only have a 1\nobreakdash-alignment
+requirement on any type. Without telling the compiler to use a different
+alignment, it will pack members in a moderate way, at least adhering
+to the alignment specifications for the configured environment. GCC
+does not reorder, so there can still be holes. The Netfilter ``communication
+protocol'' however follows the 64\nobreakdash-bit model, and 64\nobreakdash-bit
+quantities must always be 8\nobreakdash-aligned, even in 32\nobreakdash-bit
+mode. To do so, all affected members must be tagged with \texttt{\_\_attribute\_\_((aligned(8)))}.
+To facilitate this, \texttt{\index{aligned_u64@\texttt{aligned\_u64}}aligned\_u64}
+is a shorthand macro for \texttt{\index{__u64@\texttt{\_\_u64}}\_\_u64
+\_\_attribute\_\_((aligned(8)))} (similarly for \texttt{\index{aligned_le64@\texttt{aligned\_le64}}aligned\_le64}
+and \texttt{\index{aligned_be64@\texttt{aligned\_be64}}aligned\_be64}):
+\begin{lyxcode}
+\textbf{struct}~foo~\{~\\
+~~~~~~~~\_\_u8~id;~\\
+~~~~~~~~aligned\_u64~count;~\\
+~~~~~~~~\_\_u32~bar;~\\
+\};
+\end{lyxcode}
+The serialized bytestream consists of concatenations of various structures:
+\texttt{\index{struct xt_entry_match@\texttt{struct xt\_entry\_match}}struct
+xt\_entry\_\-match}, \texttt{\index{struct ip6t_ip6@\texttt{struct ip6t\_ip6}}struct
+ip6t\_ip6}, followed by a group for each match consisting of \texttt{\index{struct ip6t_entry@\texttt{struct ip6t\_entry}}struct
+ip6t\_entry} and the private match structure. Each of these structs
+is supposed to be 8\nobreakdash-aligned, so they need to be \index{padding}padded
+where necessary. To this end, the \texttt{\index{XT_ALIGN@\texttt{XT\_ALIGN}}XT\_ALIGN}
+macro should be used which rounds up the value passed in up to the
+next boundary.
+\begin{lyxcode}
+.matchsize~=~XT\_ALIGN(\textbf{sizeof}(\textbf{struct}~foo)),
+\end{lyxcode}
+
+\subsection{Attaching kernel-specific data\label{sub:xttricks-alloc}}
+
+Generally, the shared structure, \texttt{xt\_ipaddr\_mtinfo} in our
+case, only contains the necessary parameters needed to drive the match.
+However, there are times when the kernel module itself needs to do
+bookkeeping. \textsf{xt\_quota} for example keeps track of the number
+of bytes that passed the match, on a per-match basis. To achieve this,
+it adds a few extra fields to the structure (\texttt{<linux\slash{}netfilter\slash{}xt\_quota.h>}):
+\begin{lyxcode}
+\textbf{struct}~xt\_quota\_mtinfo~\{~\\
+~~~~~~~~\_\_u32~flags;~\\
+~\\
+~~~~~~~~\textbf{/{*}~}\textrm{\textit{Used~internally~by~the~kernel}}\textbf{~{*}/}~\\
+~~~~~~~~aligned\_u64~quota;~\\
+~~~~~~~~\textbf{struct}~xt\_quota\_mtinfo~\textbf{{*}}master~\_\_attribute\_\_((aligned(8)));~\\
+\};
+\end{lyxcode}
+The first kernel-only variable should be aligned to the size of the
+largest representation it can attain, which is 64\nobreakdash-bit
+(8 bytes) for pointers. To do so, you use the \texttt{\index{alignment}aligned}
+attribute as shown.
+
+When the kernel-private data gets too big, you can use an indirection
+instead, and \index{kmalloc@\texttt{kmalloc}}allocate state when
+the rule is inserted (and free when it is deleted). Consider this
+hypothetical \textsf{xt\_bigipaddr} match that records the timestamps
+of the eight most recent processed packets%
+\footnote{We could have also directly written \texttt{union nf\_inet\_addr {*}seen},
+but only the clever C programmers should think about that.%
+}:
+\begin{lyxcode}
+\textbf{struct}~xt\_bigipaddr\_state~\{~\\
+~~~~~~~~\_\_u32~seen\textbf{{[}}8\textbf{{]}};~\\
+\};~\\
+~\\
+\textbf{struct}~xt\_bigipaddr\_mtinfo~\{~\\
+~~~~~~~~\_\_u16~match\_flags,~invert\_flags;~\\
+~\\
+~~~~~~~~\textbf{/{*}~}\textrm{\textit{Used~internally~by~the~kernel}}\textbf{~{*}/}~\\
+~~~~~~~~\textbf{struct}~xt\_bigipaddr\_state~\textbf{{*}}state~\_\_attribute\_\_((aligned(8)));~\\
+\};~\\
+~\\
+\textbf{static~bool}~xt\_bigipaddr\_check(\textbf{\index{struct xt_mtchk_param@\texttt{struct xt\_mtchk\_param}}const~struct}~xt\_mtchk\_param~\textbf{{*}}par)~\\
+\{~\\
+~~~~~~~~\textbf{struct}~xt\_bigipaddr\_mtinfo~\textbf{{*}}info~=~par->matchinfo;~\\
+~\\
+~~~~~~~~info->state~=~kmalloc(\textbf{sizeof}({*}info->state),~\index{GFP_KERNEL@\texttt{GFP\_KERNEL}}GFP\_KERNEL);~\\
+~~~~~~~~\textbf{if}~(info->state~==~NULL)~\\
+~~~~~~~~~~~~~~~~return~false;~\\
+~~~~~~~~\textbf{return}~true;~\\
+\}~\\
+~\\
+\textbf{static~void}~xt\_bigipaddr\_destroy(\textbf{\index{struct xt_mtdtor_param@\texttt{struct xt\_mtdtor\_param}}const~struct}~xt\_mtdtor\_param\textbf{~{*}}par)~\\
+\{~\\
+~~~~~~~~\textbf{struct}~xt\_bigipaddr\_mtinfo~\textbf{{*}}info~=~par->matchinfo;~\\
+~~~~~~~~kfree(info->state);~\\
+\}
+\end{lyxcode}
+Because the kernel data is internal and can change, it should not
+be used for comparing rule equality in userspace. The \texttt{userspacesize}
+field in the iptables userspace module must be set to the actual portion
+that is the ``key'' (if we were to use SQL terminology). With the
+appropriate offsetof, only the first two members are compared, which
+is what we want.
+\begin{lyxcode}
+\textbf{struct}~xtables\_match~foo~=~\{~\\
+~~~~~~~~.userspacesize~=~offsetof(\textbf{struct}~xt\_bigipaddr\_mtinfo,~state);~\\
+\};
+\end{lyxcode}
+Now \textsf{xt\_quota}, which served as an example too, is a bit of
+a more special case, as the \texttt{quota} member is not only in the
+private data, but also directly in \texttt{struct xt\_quota\_mtinfo}.
+This is because the userspace module wants to print the when the user
+runs `\texttt{iptables -L}` or similar. If the field was hidden behind
+a pointer, userspace could not access it, because kernel pointers
+are invalid in userspace~--- and it is only possible to do so-called
+``shallow copies''%
+\footnote{Compare with ``deep copies'', where pointers are followed.%
+}. With this hack come the issues of updating values on SMP.
+
+
+\subsection{\index{SMP}SMP problems}
+
+You might have noticed the ominous \texttt{master} field in the \texttt{struct
+xt\_quota\_mtinfo}. It has to do with the way Xtables stores rulesets
+in memory. After the \texttt{check} function has run (successfully),
+Xtables will duplicate the entire rule (including \texttt{struct xt\_quota\_mtinfo})
+for every CPU core, for NUMA optimization reasons\citet{QuotaOnSMP}.
+This obviously creates a difficult decision: which \texttt{struct
+xt\_quota\_mtinfo} to update?
+
+In the \texttt{check} function, a separate memory area is allocated
+which will hold the quota value and which is decoupled from \texttt{struct
+xt\_quota\_info}.
+\begin{lyxcode}
+\textbf{struct}~xt\_quota\_info~\textbf{{*}}q~=~par->matchinfo;
+
+q->master~=~kmalloc(\textbf{sizeof}({*}q->master),~GFP\_KERNEL);
+\end{lyxcode}
+Now when matchinfo is duplicated, the duplicates' addresses may change,
+but the \texttt{info->master} member remains unchanged in all copies.
+It is then easy to just update the master's counters from all CPU
+cores:
+\begin{lyxcode}
+\textbf{struct}~xt\_quota\_mtinfo~\textbf{{*}}q~=~par->matchinfo;~\\
+q->master->quota~-=~skb->len;
+\end{lyxcode}
+This alone does not solve the problem~--- mentioned in the previous
+reference~--- that Xtables will copy the wrong struct to userspace
+(e.\,g.\ for `\texttt{iptables -vL}`). The best approximation for
+this is to copy the shared quota value to the per-cpu variable everything
+the match function is called.
+\begin{lyxcode}
+\textbf{/{*}~}\textrm{\textit{Copy~quota~back~to~matchinfo~so~that~iptables~can~display~it}}\textbf{~{*}/}~\\
+q->quota~=~q->priv->quota;
+\end{lyxcode}
+To get at the real value that is currently held in memory at \texttt{q->priv->quota},
+other mechanisms need to be used. The \textsf{xt\_quota2} module from
+Xtables-addons for example exports the exact quota through procfs%
+\footnote{Though, this is actually done so, because \textsf{quota2} also allows
+the quota to be set while the rule is active.%
+}.
+
+
+\subsection{Deferred rule deletion on table replacement}
+
+When tables are replaced, the new rules are loaded into the kernel
+first before the old ones are removed. This also means that the \texttt{\index{checkentry function}checkentry}
+function is called before \texttt{\index{destroy function}destroy}.
+This is important to know when information is shared between two rules,
+for example lists of IP addresses in \textsf{xt\_recent} or geoip
+lists in \textsf{xt\_geoip}~--- when an existing rule is changed
+with \textsf{\index{iptables-restore@\textsf{iptables-restore}}iptables-restore},
+the already populated address list is not cleared/changed since the
+reference count never dropped to zero.
+
+Calling \textsf{iptables} manually~--- this will do \textit{two}
+table replacements~--- may clear the address list, but \textit{only}
+if there was exactly one reference to ``foo'' in all tables:
+\begin{lyxcode}
+iptables~-D~...~-m~recent~-{}-name~foo;~\\
+iptables~-A~...~-m~recent~-{}-name~foo;
+\end{lyxcode}
+
+\subsection{A bit of coding style}
+
+Do not needlessy define your own incarnation of a debug macro. Instead,
+use the existing \texttt{\index{pr_devel@\texttt{pr\_devel}}pr\_devel}
+which is enabled once \index{DEBUG@\texttt{DEBUG}}\texttt{DEBUG}
+is enabled.
+\begin{lyxcode}
+\textbf{/{*}~}\textrm{\textit{Avoid~this}}\textbf{~{*}/}~\\
+\textbf{\#if~1}~\\
+\textbf{\#~~~~~~~~define~DEBUGP~printk}~\\
+\textbf{\#else}~\\
+\textbf{\#~~~~~~~~define~DEBUGP(format,~args...)}~\\
+\textbf{\#endif}~\\
+DEBUGP(\textquotedbl{}Hello~World\textbackslash{}n\textquotedbl{});
+
+
+
+\textbf{/{*}~}\textrm{\textit{Use~this}}\textbf{~{*}/}~\\
+\textbf{\#if~1}~\\
+\textbf{\#~~~~~~~~define~DEBUG~1}~\\
+\textbf{\#endif}~\\
+pr\_devel(\textquotedbl{}Hello~World\textbackslash{}n\textquotedbl{});
+\end{lyxcode}
+``\texttt{\#if 1}'' may also be replaced with ``\texttt{\#ifdef
+CONFIG\_\-SOME\_\-OPTION}'', in case a Kconfig option is used to
+disable or enable debug info.
+
+\clearpage{}
+
+
+\section{Target extensions}
+
+Targets can be really versatile. Common categories and examples are:
+\begin{itemize}
+\item mangling the packet payload~-- \textsf{\index{xt_DSCP@\textsf{xt\_DSCP}}DSCP},
+\textsf{\index{xt_TCPMSS@\textsf{xt\_TCPMSS}}TCPMSS}, \textsf{\index{ip6t_HL@\textsf{ip6t\_HL}}HL}/\textsf{TTL}
+\item setting up NAT mappings~-- \textsf{\index{ipt_MASQUERADE@\textsf{ipt\_MASQUERADE}}MASQUERADE},
+\textsf{\index{ipt_NETMAP@\textsf{ipt\_NETMAP}}NETMAP}, \textsf{\index{ipt_REDIRECT@\textsf{ipt\_REDIRECT}}REDIRECT}
+\item replying to packets (original packet is not modified)~-- \textsf{\index{ip6t_REJECT@\textsf{ip6t\_REJECT}}REJECT}
+\item changing skb, packet or connection parameters~-- \textsf{\index{xt_CLASSIFY@\textsf{xt\_CLASSIFY}}CLASSIFY},
+\textsf{\index{xt_CONNMARK@\textsf{xt\_CONNMARK}}CONNMARK}, \index{xt_MARK@\textsf{xt\_MARK}}\textsf{MARK},
+\textsf{\index{xt_NOTRACK@\textsf{xt\_NOTRACK}}NOTRACK}, \textsf{\index{xt_TRACE@\textsf{xt\_TRACE}}TRACE}
+\item just watching packets, e.\,g.\ for statistical or analytical purposes
+(most often, matches are used instead)~-- \textsf{\index{ip6t_LOG@\textsf{ip6t\_LOG}}LOG}/\textsf{\index{xt_NFLOG@\textsf{xt\_NFLOG}}NFLOG},
+\textsf{\index{xt_RATEEST@\textsf{xt\_RATEEST}}RATEEST}
+\item moving the packet to userspace~-- \textsf{NFLOG}, \textsf{\index{xt_NFQUEUE@\textsf{xt\_NFQUEUE}}NFQUEUE}
+\item other actions~-- \textsf{SYSRQ}
+\end{itemize}
+A few snippets from existing target modules will be explained in this
+chapter to demonstrate how they interact with Xtables.
+
+Focus is on the \textsf{\index{xt_ECHO@\textsf{xt\_ECHO}}xt\_ECHO}
+sample target for explanation of the skeletal structure. \textsf{xt\_ECHO}
+which will return all bytes that have been written to a port~---
+in effect, this is the ``echo'' protocol as defined in \citet{RFC862}.
+It will be limited to UDP, because implementing a TCP engine is a
+somewhat bigger task and would extend beyond the scope of this document.
+
+
+\subsection{Naming convention}
+
+Just like for matches (see section~\ref{sub:xtmatch-naming}), there
+is also a convention for targets. All it takes is replacing the \texttt{\_mt}
+part by \texttt{\_tg}. While targets' names are upper-case, symbols
+will remain lower-case.
+\begin{itemize}
+\item \texttt{echo\_tg\_reg}~-- structure\slash{}object containing target
+metadata and vtable
+\item \texttt{echo\_tg} (or \texttt{echo\_tg4}, \texttt{echo\_tg6} when
+it uses distinct functions)~-- the target (``action'') function
+\item \texttt{echo\_tg\_check}~-- function to check for validity of parameters
+in our struct
+\item \texttt{echo\_tg\_destroy}~-- function when rule is deleted
+\item \texttt{struct xt\_echo\_tginfo} and \texttt{struct xt\_echo\_tginfo}\texttt{\textit{N}}~--
+structure for our own data (for revision \textit{N})
+\end{itemize}
+
+\subsection{Structural definition}
+
+This is the \texttt{\index{struct xt_target@\texttt{struct xt\_target}}xt\_target}
+structure, excluding internal fields. It is also defined in \texttt{\index{linux/netfilter/x_tables.h@\textit{linux/netfilter/x\_tables.h}}<linux\slash{}netfilter\slash{}x\_tables.h>}.
+\begin{lyxcode}
+\textbf{\index{struct xt_target_param@\texttt{struct xt\_target\_param}}struct}~xt\_target\_param~\{~\\
+~~~~~~~~\textbf{const~struct}~net\_device~\textbf{{*}}in,~\textbf{{*}}out;~\\
+~~~~~~~~\textbf{const~struct}~xt\_target~\textbf{{*}}target;~\\
+~~~~~~~~\textbf{const~void~{*}}targinfo;~\\
+~~~~~~~~\textbf{unsigned~int}~hooknum;~\\
+~~~~~~~~\textbf{uint8\_}t~family;~\\
+\};~\\
+~\\
+\textbf{\index{struct xt_tgchk_param@\texttt{struct xt\_tgchk\_param}}struct}~xt\_tgchk\_param~\{~\\
+~~~~~~~~\textbf{const~char~{*}}table;~\\
+~~~~~~~~\textbf{const~void~{*}}entryinfo;~\\
+~~~~~~~~\textbf{const~struct}~xt\_target~\textbf{{*}}target;~\\
+~~~~~~~~\textbf{void~{*}}targinfo;~\\
+~~~~~~~~\textbf{unsigned~int}~hook\_mask;~\\
+~~~~~~~~\textbf{uint8\_t}~family;~\\
+\};~\\
+~\\
+\textbf{\index{struct xt_tgdtor_param@\texttt{struct xt\_tgdtor\_param}}struct}~xt\_tgdtor\_param~\{~\\
+~~~~~~~~\textbf{const~struct}~xt\_target~\textbf{{*}}target;~\\
+~~~~~~~~\textbf{void~{*}}targinfo;~\\
+~~~~~~~~\textbf{uint8\_t}~family;~\\
+\};~\\
+~\\
+\index{struct xt_target@\texttt{struct xt\_target}}\textbf{struct}~xt\_target~\{~\\
+~~~~~~~~\textbf{const~char}~name\textbf{{[}}\index{XT_FUNCTION_MAXNAMELEN@\texttt{XT\_FUNCTION\_MAXNAMELEN}}XT\_FUNCTION\_MAXNAMELEN-1\textbf{{]}};~\\
+~~~~~~~~\textbf{uint8\_t}~revision;~\\
+~~~~~~~~\textbf{unsigned~short}~family;~\\
+~~~~~~~~\textbf{const~char~{*}}table;~\\
+~~~~~~~~\textbf{unsigned~int}~hooks;~\\
+~~~~~~~~\textbf{unsigned~short}~proto;~\\
+~\\
+~~~~~~~~\textbf{unsigned~int}~targetsize;~\\
+~~~~~~~~\textbf{unsigned~int~({*}}target\textbf{)}(\textbf{struct~sk\_buff~{*}}skb,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{const~struct}~xt\_target\_param~\textbf{{*}}par);~\\
+~~~~~~~~\textbf{bool~({*}}checkentry\textbf{)}(\textbf{const~struct}~xt\_tgchk\_param~\textbf{{*}}par);~\\
+~~~~~~~~\textbf{void~({*}}destroy\textbf{)}(\textbf{const~struct}~xt\_tgdtor\_param~\textbf{{*}}par);~\\
+~\\
+~~~~~~~~\textbf{struct}~module~\textbf{{*}}me;~\\
+\};
+\end{lyxcode}
+Xtables-addons uses a slightly different \texttt{target} function
+signature to cope with kernels before 2.6.24, so if you plan on writing
+your module with the help of the Xtables-addons glue code, do not
+be surprised of an extra compiler warning if copying code verbatim.
+The signature is:
+\begin{lyxcode}
+\textbf{unsigned~int~({*}}target\textbf{)}(\textbf{struct~sk\_buff~{*}{*}}pskb,~\\
+~~~~~~~~~~~~~~~~~~~~~~~\textbf{const~struct}~xt\_target\_param~\textbf{{*}}par);
+\end{lyxcode}
+
+\subsection{Module initialization\label{sub:xttarget-initialization}}
+
+The structure looks quite the same as matches do (see section~\ref{sub:xtmatch-init}),
+so the initialization is straightforward:
+\begin{lyxcode}
+\textbf{\index{struct xt_target@\texttt{struct xt\_target}}static~struct}~xt\_target~echo\_tg\_reg~\index{__read_mostly@\texttt{\_\_read\_mostly}}\_\_read\_mostly~=~\{~\\
+~~~~~~~~.name~~~~~~~=~\textquotedbl{}ECHO\textquotedbl{},~\\
+~~~~~~~~.revision~~~=~0,~\\
+~~~~~~~~.family~~~~~=~NFPROTO\_IPV4,~\\
+~~~~~~~~.proto~~~~~~=~\index{IPPROTO_UDP@\texttt{IPPROTO\_UDP}}IPPROTO\_UDP,
+\end{lyxcode}
+The target shall be limited to the \textsf{filter} table, because
+it does not make too much sense in \textsf{mangle}, and is totally
+out of place in \textsf{nat} (for IPv4) which is only called on the
+first packet of a (pseudo-)connection. \texttt{hooks} is a bitmask
+and may contain zero or more of the following flags:
+\begin{itemize}
+\item \texttt{1 <\textcompwordmark{}< \index{NF_INET_PRE_ROUTING@\texttt{NF\_INET\_PRE\_ROUTING}}NF\_INET\_PRE\_ROUTING}
+\item \texttt{1 <\textcompwordmark{}< \index{NF_INET_INPUT@\texttt{NF\_INET\_INPUT}}NF\_INET\_INPUT}
+\item \texttt{1 <\textcompwordmark{}< \index{NF_INET_FORWARD@\texttt{NF\_INET\_FORWARD}}NF\_INET\_FORWARD}
+\item \texttt{1 <\textcompwordmark{}< \index{NF_INET_OUTPUT@\texttt{NF\_INET\_OUTPUT}}NF\_INET\_OUTPUT}
+\item \texttt{1 <\textcompwordmark{}< \index{NF_INET_POST_ROUTING@\texttt{NF\_INET\_POST\_ROUTING}}NF\_INET\_POST\_ROUTING}
+\end{itemize}
+Kernels before 2.6.25(-rc1) used \texttt{NF\_IP\_} and \texttt{NF\_IP6\_}
+prefixes, but because the values are the same, they have been collapsed
+into \texttt{NF\_INET\_}. Note that \textsf{arptables} and \textsf{ebtables}
+use their own hooks. If \texttt{hooks} is not set, it is initialized
+to \texttt{0} by default, which implies that this target can be used
+in all chains.
+
+The target shall further only be usable from \textsf{\index{INPUT@\textsf{INPUT}}INPUT},
+\textsf{\index{FORWARD@\textsf{FORWARD}}FORWARD} and \textsf{\index{OUTPUT@\textsf{OUTPUT}}OUTPUT},
+although this is already guaranteed by restricting it to the filter
+table, which has only these three chains. It is therefore optional,
+but shown here.
+\begin{lyxcode}
+~~~~~~~~.filter~~~~~=~\textquotedbl{}table\textquotedbl{},~\\
+~~~~~~~~.hooks~~~~~~=~(1~<\textcompwordmark{}<~NF\_INET\_LOCAL\_IN)~|~\\
+~~~~~~~~~~~~~~~~~~~~~~(1~<\textcompwordmark{}<~NF\_INET\_FOWARD)~|~\\
+~~~~~~~~~~~~~~~~~~~~~~(1~<\textcompwordmark{}<~NF\_INET\_LOCAL\_OUT),~\\
+~~~~~~~~.target~~~~~=~echo\_tg4,~\\
+~~~~~~~~.targetsize~=~XT\_ALIGN(0),~\\
+~~~~~~~~.me~~~~~~~~~=~THIS\_MODULE,~\\
+\};
+\end{lyxcode}
+A \texttt{\index{targetsize@\texttt{targetsize}}targetsize} of zero
+is used here, because we decided not to add any options right now.
+Hence there is also no private data structure and no header file to
+define, a \texttt{checkentry} function is also absent since there
+is nothing to validate nor a layer\nobreakdash-3 tracking module
+needs to be loaded in this implementation.
+
+The rest is, again, known standard code for (un)register the target
+on module insertion/removal and some metadata:
+\begin{lyxcode}
+\textbf{static~int}~\_\_init~echo\_tg\_init(\textbf{void})~\\
+\{~\\
+~~~~~~~~\textbf{return}~xtables\_register\_target(\&echo\_tg\_reg);~\\
+\}~\\
+~\\
+\textbf{static~void}~\_\_exit~echo\_tg\_exit(\textbf{void})~\\
+\{~\\
+~~~~~~~~xtables\_unregister\_target(\&echo\_tg\_reg);~\\
+\}~\\
+~\\
+\index{MODULE_DESCRIPTION@\texttt{MODULE\_DESCRIPTION}}MODULE\_DESCRIPTION(\textquotedbl{}Xtables:~RFC~862~\textbackslash{}\textquotedbl{}echo\textbackslash{}\textquotedbl{}~protocol~implementation\textquotedbl{});~\\
+MODULE\_LICENSE(\textquotedbl{}GPL\textquotedbl{});~\\
+MODULE\_ALIAS(\textquotedbl{}ipt\_ECHO\textquotedbl{});~\\
+MODULE\_ALIAS(\textquotedbl{}ip6t\_ECHO\textquotedbl{});
+\end{lyxcode}
+Xtables also provides ``plural'' functions for target (un)registration
+for your convenience that take an array of \texttt{struct xt\_target}s;
+they are called \textbf{\index{xtables_register_target@\texttt{xtables\_register\_target}}}\texttt{xtables\_\-register\_\-targets}
+and \index{xtables_unregister_target@\texttt{xtables\_unregister\_target}}\texttt{xtables\_\-unregister\_\-targets}.
+
+
+\subsection{\index{verdict}Verdicts\label{sub:xttarget-verdicts}}
+
+Each rule can be assigned a target, which can be seen as an ``action''
+that is to be done. It is only called when all matches assigned with
+a rule have matched. It is invoked with `\texttt{iptables ... -j ECHO}`
+for example, and the three special targets \textsf{\index{ACCEPT@\textsf{ACCEPT}}ACCEPT},
+\textsf{\index{DROP@\textsf{DROP}}DROP} and \textsf{\index{RETURN@\textsf{RETURN}}RETURN}
+that directly map to a verdict.
+
+On a code base, target extensions still need to return a verdict on
+their behalf. Depending on the nature of the target, either \texttt{NF\_ACCEPT}
+or \texttt{NF\_DROP} is chosen for terminating targets, while \texttt{XT\_CONTINUE}
+is used for targets that do not cause rule traversal to stop.
+
+Possible verdict return values for the function are:
+\begin{itemize}
+\item \texttt{\index{XT_CONTINUE@\texttt{XT\_CONTINUE}}XT\_CONTINUE}~--
+continue with next rule. Most commonly used by ``watcher'' (\textsf{ip6t\_LOG},
+\textsf{xt\_NFLOG}) and mangling targets, to allow for multiple mangling
+transformations.
+\item \texttt{\index{NF_DROP@\texttt{NF\_DROP}}NF\_DROP}~-- stop traversal
+in the current table hook and drop packet. It is the standard action
+of any target that has somehow processed the (original) packet (\textsf{ip6t\_REJECT}).
+\item \texttt{\index{NF_ACCEPT@\texttt{NF\_ACCEPT}}NF\_ACCEPT}~-- stop
+traversal in the current table hook and accept packet. Used by targets
+that set up a NAT mapping.
+\item \texttt{\index{XT_RETURN@\texttt{XT\_RETURN}}XT\_RETURN}~-- return
+to the previous chain or default chain policy. This is an internal
+target only, no modules use it to avoid creating confusion on behalf
+of the user.
+\end{itemize}
+For security reasons, packets that cannot be processed due to a memory
+allocation failure, routing problem, or any other problem should be
+discarded with \texttt{NF\_DROP} so that they will not leak from,
+that is, bypass, the firewall.
+
+
+\subsection{Replying with packets}
+
+A warning beforehand: sending packets from within Netfilter causes
+re-entrancy. \textsf{ip\_tables}, \textsf{ip6\_tables}, etc.\ store
+the \index{jump stack}jump stack for a table within that (\index{per-cpu}per-cpu)
+table itself%
+\footnote{A block of heap memory associated with the per-cpu table is used in
+a stack fashion.%
+}. Once control from the second invocation returns to the original
+target, the jump stack will have been overwritten, and \texttt{\index{XT_CONTINUE@\texttt{XT\_CONTINUE}}XT\_CONTINUE}
+or \texttt{\index{XT_RETURN@\texttt{XT\_RETURN}}XT\_RETURN}~---
+so-called ``relative verdicts''~--- cannot be used without causing
+undefined behavior. An absolute verdict from the \texttt{NF\_{*}}
+group must be returned.
+
+Prior to 2.6.24, the target function uses an indirect skb pointer,
+\texttt{const struct sk\_buff {*}{*}pskb}; for those kernels, use
+\texttt{{*}pskb} when accessing the skb%
+\footnote{Again, no \texttt{\#ifdef LINUX\_VERSION\_CODE~< KERNEL\_VERSION(2,
+6, 25)} trickery is needed when you use the Xtables-addons package.%
+}. Xtables-addons continues to provide an API with a pskb for being
+able to interface with older kernels.
+
+There will be a lot of local variables in this function. When writing
+real targets, it is advised to split big functions up.
+\begin{lyxcode}
+\textbf{static~unsigned~int}~echo\_tg4(\textbf{\index{struct sk_buff@\texttt{struct sk\_buff}}struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~\textbf{\index{struct xt_target_param@\texttt{struct xt\_target\_param}}const~struct}~xt\_target\_param~\textbf{{*}}par)~\\
+\{~\\
+~~~~~~~~\textbf{\index{struct udphdr@\texttt{struct udphdr}}const~struct}~udphdr~\textbf{{*}}oldudp;~\\
+~~~~~~~~\textbf{\index{struct iphdr@\texttt{struct iphdr}}const~struct}~iphdr~\textbf{{*}}oldip;~\\
+~~~~~~~~\textbf{struct}~udphdr~\textbf{{*}}newudp,~oldudp\_buf;~\\
+~~~~~~~~\textbf{struct}~iphdr~\textbf{{*}}newip;~\\
+~~~~~~~~\textbf{struct}~sk\_buff~\textbf{{*}}newskb;~\\
+~~~~~~~~\textbf{unsigned~int}~addr\_type,~data\_len,~offset;~\\
+~~~~~~~~\textbf{void~{*}}payload;
+\end{lyxcode}
+The incoming skb might have \index{IP options}IP options which we
+do not want in the outgoing skb/packet, therefore the new skb is rebuilt
+from scratch. (For TCP this is even more important because there can
+also be \index{TCP options}TCP options besides IP options.) A possible
+alternative is to use the \texttt{\index{skb_copy@\texttt{skb\_copy}}skb\_copy}
+(or \texttt{\index{skb_copy_expand@\texttt{skb\_copy\_expand}}skb\_\-copy\_\-expand})
+function instead and somehow strip all potentially unwanted pieces.
+
+At first, pointers to the IPv4 and UDP headers are obtained. \texttt{\index{ip_hdrlen@\texttt{ip\_hdrlen}}ip\_hdrlen}
+is a function that returns the size of the IPv4 header including options.
+The \texttt{offset} variable will be used during the course of this
+function as the index to data that has yet to be copied to the new
+packet. The third argument to \texttt{\index{skb_header_pointer@\texttt{skb\_header\_pointer}}skb\_\-header\_\-pointer}
+specifies the amount of bytes to obtain starting at \texttt{offset}.
+Not always do all fields need to be retrieved. It would be perfectly
+valid to use \texttt{6} instead of \texttt{sizeof(\index{struct udphdr@\texttt{struct udphdr}}struct
+udphdr)} in the second \texttt{skb\_\-header\_\-pointer} call, because
+we are not really interested in the UDP checksum. If the region to
+be extracted from the packet is out-of-bounds, \texttt{NULL} will
+be returned. This provides a check for maliciously short packets,
+and such should be dropped right away. Also, any UDP packet without
+any payload is ignored too.
+
+Our simplistic implementation will linearize skbs to keep the code
+as simple as possible. (If the skb is already linear, nothing happens.)
+\begin{lyxcode}
+~~~~~~~~\textbf{if}~(\index{skb_linearize@\texttt{skb\_linearize}}skb\_linearize(oldskb)~<~0)~\\
+~~~~~~~~~~~~~~~~\textbf{return}~NF\_DROP;~\\
+~\\
+~~~~~~~~oldip~~=~ip\_hdr(oldskb);~\\
+~~~~~~~~offset~=~ip\_hdrlen(oldskb);~\\
+~~~~~~~~oldudp~=~skb\_header\_pointer(oldskb,~par->thoff,~\\
+~~~~~~~~~~~~~~~~~\textbf{sizeof}(\textbf{struct}~udphdr),~\&oldudp\_buf);~\\
+~~~~~~~~\textbf{if}~(oldudp~==~NULL)~\\
+~~~~~~~~~~~~~~~~\textbf{return}~\index{NF_DROP@\texttt{NF\_DROP}}NF\_DROP;~\\
+~~~~~~~~\textbf{if}~(ntohs(oldudp->len)~<=~\textbf{sizeof}(\textbf{struct}~udphdr))~\\
+~~~~~~~~~~~~~~~~\textbf{return}~NF\_DROP;~\\
+~\\
+~~~~~~~~offset~+=~\textbf{sizeof}(\textbf{struct}~udphdr);
+\end{lyxcode}
+\texttt{\index{ip_hdr@\texttt{ip\_hdr}}ip\_hdr} (and other accessors,
+like \texttt{\index{ipv6_hdr@\texttt{ipv6\_hdr}}ipv6\_hdr}) can be
+used without problems since the layer\nobreakdash-3 header (without
+IPv4 options, though) is always \index{linear skb}linear, i.\,e.\ it
+is one continuous stream of bytes and is not fragmented or split across
+multiple skbs%
+\footnote{This is done in \texttt{net\slash{}ipv4\slash{}ip\_input.c}, function
+\texttt{ip\_rcv}%
+}. On the other hand, \texttt{skb\_\-header\_\-pointer} needs to
+be used for data that could potentially be non-linear. \texttt{skb\_\-header\_\-pointer}
+will, if a skb boundary is crossed, copy data from multiple skbs into
+the buffer pointed to by its fourth argument, making the desired bytes
+available in linear memory. If the byte range that should be extracted
+is already linear, a pointer is returned, making the operation cheap.
+
+In the next step, the new skb is allocated. The fact that it should
+have the same size as the original packet (minus IP options) should
+be obvious. Some extra space for the link layer processing seems needed,
+so \texttt{LL\_MAX\_\-HEADER} is added%
+\footnote{The exact use for \texttt{LL\_MAX\_HEADER} is beyond the scope of
+this document. For now, it is best to look at existing target extensions
+within the kernel and copy their behavior.%
+}. The \texttt{length} field of \texttt{struct udphdr} includes the
+UDP header's own size, so \texttt{sizeof(struct udphdr)} is not added
+again. Do not forget to use the \texttt{\index{ntohs@\texttt{ntohs}}ntohs}
+and \texttt{\index{ntohl@\texttt{ntohl}}ntohl} functions when dealing
+with fields in network packets~--- only predefined functions such
+as \texttt{ip\_hdrlen} for example do the endianess conversion already.
+The allocation must be done using \texttt{\index{GFP_ATOMIC@\texttt{GFP\_ATOMIC}}GFP\_ATOMIC}
+because the target function might be run in interrupt context, where
+sleeping is not allowed and a failure to get hold of memory should
+result in an immediate return from the allocator with a \texttt{NULL}
+result.
+\begin{lyxcode}
+~~~~~~~~newskb~=~\index{alloc_skb@\texttt{alloc\_skb}}alloc\_skb(LL\_MAX\_HEADER~+~\textbf{sizeof}(\textbf{struct}~iphdr)~+~\\
+~~~~~~~~~~~~~~~~~ntohs(oldudp->len),~GFP\_ATOMIC);~\\
+~~~~~~~~\textbf{if}~(nskb~==~NULL)~\\
+~~~~~~~~~~~~~~~~\textbf{return}~NF\_DROP;~\\
+~\\
+~~~~~~~~\index{skb_reserve@\texttt{skb\_reserve}}skb\_reserve(nskb,~LL\_MAX\_HEADER);~\\
+~~~~~~~~\index{skb_reset_network_header@\texttt{skb\_reset\_network\_header}}skb\_reset\_network\_header(nskb);
+\end{lyxcode}
+What follows is filling out the fields of a newly attached \texttt{iphdr}
+structure. \texttt{\index{skb_put@\texttt{skb\_put}}skb\_put} extends
+the skb's tail pointer by as many bytes as specified and returns the
+original pointer (of type \texttt{unsigned char~{*}}, which is why
+a cast is needed to get it to the desired \texttt{struct iphdr~{*}}
+without warnings).
+\begin{lyxcode}
+~~~~~~~~newip~=~(\textbf{void~{*}})skb\_put(newskb,~\textbf{sizeof}(\textbf{struct}~iphdr));~\\
+~~~~~~~~newip->version~~=~4;~\\
+~~~~~~~~newip->ihl~~~~~~=~\textbf{sizeof}(\textbf{struct}~iphdr)~/~4;~\\
+~~~~~~~~newip->tos~~~~~~=~oldip->tos;~\\
+~~~~~~~~newip->id~~~~~~~=~oldip->id;~\\
+~~~~~~~~newip->frag\_off~=~oldip->frag\_off;~\\
+~~~~~~~~newip->protocol~=~oldip->protocol;~\\
+~~~~~~~~newip->check~~~~=~0;~\\
+~~~~~~~~newip->saddr~~~~=~oldip->daddr;~\\
+~~~~~~~~newip->daddr~~~~=~oldip->saddr;
+\end{lyxcode}
+The code sets the fragment identification number and offset to the
+original values, which should make fragment processing work, since
+the packet length is not changed. It is not always that easy however,
+and extensions are free to ignore fragments%
+\footnote{At the potential cost of an unhappy user who avoids having \textsf{nf\_defrag}
+loaded.%
+}. On many systems, the packet defragmenter is enabled because a number
+of modules, such as the IPv4 NAT engine and \textsf{xt\_conntrack}
+depend on the connection tracking subsystem being loaded, so Xtables
+often does not get to see fragments anyway.
+\begin{lyxcode}
+~~~~~~~~newudp~=~(\textbf{void~{*}})skb\_put(nskb,~\textbf{sizeof}(\textbf{struct}~udphdr));~\\
+~~~~~~~~newudp->source~=~oldudp->dest;~\\
+~~~~~~~~newudp->dest~~~=~oldudp->source;~\\
+~~~~~~~~newudp->len~~~~=~oldudp->len;~\\
+~~~~~~~~newudp->check~~=~0;
+\end{lyxcode}
+The UDP header is equipped with a zero \index{checksum}checksum here,
+which means that we did not care about integrity and no checksum was
+calculated, which is just the right thing for testing. In modules
+with real-world applicable use however, you should properly calculate
+checksums.
+
+Now comes the copy operation. Because the presence of non-linear skbs
+has been ruled out above by linearizing it, a few shortcuts can be
+taken: \texttt{NULL} can be passed in as the fourth argument to \texttt{skb\_\-header\_\-pointer},
+and \texttt{memcpy} can be used. There are probably critical opinions
+about linearizing skbs just to make the code simpler. Extracting pieces
+of the oldskb with \texttt{skb\_\-header\_\-pointer} is likely just
+as expensive; in the typical coded case, it always takes up the requested
+amount of stack memory, whereas \texttt{\index{skb_linearize@\texttt{skb\_linearize}}skb\_linearize}
+instead causes a heap allocation in the event of a non-linear skb.
+Stack usage vs.\ a potential allocation, that is the trade-off.
+\begin{lyxcode}
+~~~~~~~~data\_len~=~htons(oldudp->len)~-~\textbf{sizeof}({*}oldudp);~\\
+~~~~~~~~payload~~=~skb\_header\_pointer(oldskb,~ip\_hdrlen(oldskb)~+~\\
+~~~~~~~~~~~~~~~~~~~\textbf{sizeof}({*}oldudp),~data\_len,~NULL);~\\
+~~~~~~~~memcpy(skb\_put(newskb,~data\_len),~payload,~data\_len);
+\end{lyxcode}
+After the packet has been constructed, it is still necessary to select
+an output route for it and actually send it off. It is a fair bit
+of boilerplate code that is unfortunately duplicated in a few places
+in the kernel without having being grouped in a function so far. It
+is left out here, but can be looked up in the \textsf{xt\_ECHO} code
+in the Xtables-addons package. There is still something left, however.
+The new skb gets the same conntrack entry as the oldskb, so it will
+be part of the connection that is seen in Netfilter.
+\begin{lyxcode}
+~~~~~~~~nf\_ct\_attach(newskb,~oldskb);~\\
+~~~~~~~~\index{ip_local_out@\texttt{ip\_local\_out}}ip\_local\_out(newskb);~\\
+~~~~~~~~\textbf{return}~\index{NF_DROP@\texttt{NF\_DROP}}NF\_DROP;~\\
+\}
+\end{lyxcode}
+If the packet is handled by our module, it must not be passed to the
+real UDP stack which would otherwise be called after all the Netfilter
+hooks completed. If it were to be let through to the UDP core, an
+ICMP error might be generated because there is no open socket on that
+port, or an application that does have a socket open sends some sort
+of unwanted negative reply. This must be avoided, so \texttt{NF\_DROP}
+is used as the final verdict.
+\begin{lyxcode}
+\#~\textbf{iptables~-I~INPUT~-i~lo~-p~udp~-{}-dport~2345~-j~ECHO;}~\\
+\#~\textbf{\index{tcpdump@\textsf{tcpdump}}tcpdump~-Xs0~-lni~lo~udp~\&}~\\
+\#~\textbf{echo~\textquotedbl{}xtables-addons\textquotedbl{}~|~\index{socat@\textsf{socat}}socat~-~udp-sendto:localhost:2345}~\\
+03:35:42.732411~IP~127.0.0.1.32847~>~127.0.0.1.2345:~UDP,~length~15~\\
+~~~~~~~~~0x0000:~~4500~002b~0cf7~4000~4011~2fc9~7f00~0001~~E..+..@.@./.....~\\
+~~~~~~~~~0x0010:~~7f00~0001~804f~0929~0017~fe2a~7874~6162~~.....O.)...{*}xtab~\\
+~~~~~~~~~0x0020:~~6c65~732d~6164~646f~6e73~0a~~~~~~~~~~~~~~les-addons.~\\
+03:35:42.732468~IP~127.0.0.1.2345~>~127.0.0.1.32847:~UDP,~length~15~\\
+~~~~~~~~~0x0000:~~4500~002b~0000~4000~4011~3cc0~7f00~0001~~E..+..@.@.<.....~\\
+~~~~~~~~~0x0010:~~7f00~0001~0929~804f~0017~0000~7874~6162~~.....).O....xtab~\\
+~~~~~~~~~0x0020:~~6c65~732d~6164~646f~6e73~0a~~~~~~~~~~~~~~les-addons.~
+\end{lyxcode}
+
+\subsection{Changing packet payload}
+
+\begin{lyxgreyedout}
+This section needs expansion.%
+\end{lyxgreyedout}
+
+
+The packet payload can simply be changed by toying around with the
+skb. You can write to \texttt{skb->data}, or even resize it if need
+be. What you do need to pay attention to is that you possibly need
+to regenerate layer\nobreakdash-4 (e.\,g.\ TCP/UDP) and layer\nobreakdash-3
+(IPv4, but not in IPv6) checksums.
+\begin{lyxcode}
+\textbf{static~unsigned~int}~memfry\_tg(\textbf{struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~\textbf{const~struct}~xt\_target\_param~\textbf{{*}}par)~\\
+\{~\\
+~~~~~~~~\textbf{struct}~udphdr~\textbf{{*}}udph;~\\
+~~~~~~~~\textbf{unsigned~char~{*}}data;~\\
+~~~~~~~~\textbf{unsigned~int}~data\_len;~\\
+~\\
+~~~~~~~~\textbf{if}~(!skb\_make\_writable(skb,~skb->len))~\\
+~~~~~~~~~~~~~~~~\textbf{return}~NF\_DROP;
+\end{lyxcode}
+\index{skb_make_writable@\texttt{skb\_make\_writable}}\texttt{skb\_make\_writable}
+will ensure here that we will have exclusive ownership of the packet.
+It may also, as a matter of fact, cause the pointers inside the skb
+to change, so if you have copied \texttt{skb->data} to any of your
+variables, you will have to re-fetch the \texttt{skb->data} pointer
+afterwards.
+\begin{lyxcode}
+~~~~~~~~udp~~~~~~=~skb->data~+~ip\_hdrlen(skb);
+
+~~~~~~~~data~~~~~=~skb->data~+~ip\_hdrlen(skb)~+~\textbf{sizeof}(\textbf{struct}~udphdr);~\\
+~~~~~~~~data\_len~=~skb->len~-~ip\_hdrlen(skb)~-~\textbf{sizeof}(\textbf{struct}~udphdr);~\\
+~\\
+~~~~~~~~for~(i~=~0;~i~<~data\_len;~++i)~\\
+~~~~~~~~~~~~~~~~data{[}i{]}~\textasciicircum{}=~i;~\\
+~~~~~~~~\textbf{/{*}~}\textrm{\textit{checksumming?}}\textbf{~{*}/}~\\
+~\\
+~~~~~~~~return~XT\_CONTINUE;~\\
+\}
+\end{lyxcode}
+You can take shortcuts in calculating the checksum if you can assure
+that the checksum remains the same after you applied your transformation.
+This is for example the case when you use XOR, but I am not too much
+into the maths, so this is left up to you.
+
+
+\subsection{Checksumming\label{sub:xttarget-checksum}}
+
+\begin{lyxgreyedout}
+Would someone like to contribute to this section?%
+\end{lyxgreyedout}
+
+\begin{lyxcode}
+\textbf{\#include~<linux/checksum.h>}~\\
+~\\
+\textbf{void}~csum\_replace2(\_\_sum16~\textbf{{*}}sum,~\_\_be16~from,~\_\_be16~to);~\\
+\textbf{void}~csum\_replace4(\_\_sum16~\textbf{{*}}sum,~\_\_be32~from,~\_\_be32~to);~\\
+\textbf{void}~inet\_proto\_csum\_replace2(\_\_sum16~\textbf{{*}}sum,~\textbf{struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~~~~~\_\_be16~from,~\_\_be16~to,~\textbf{bool}~pseudohdr);~\\
+\textbf{void}~inet\_proto\_csum\_replace4(\_\_sum16~\textbf{{*}}sum,~\textbf{struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~~~~~\_\_be32~from,~\_\_be32~to,~\textbf{bool}~pseudohdr);
+\end{lyxcode}
+\begin{lyxgreyedout}
+Setting the checksum to 0 or 0xFFFF has special meaning... setting
+\texttt{skb->ip\_summed} indicates something different again even.%
+\end{lyxgreyedout}
+
+
+
+\subsection{Modifying packet parameters}
+
+One of the ``easier'' classes of targets are those that do not play
+much with the packet payload, in fact, that only do read operations
+on it. Xtables has quite a number of them~--- \textsf{xt\_MARK} and
+\textsf{xt\_CONNMARK}, just to name two. These influence the skb or
+connection parameters and otherwise do not do very much besides being
+very flexible about what they do, providing masked bit operations
+on parameters. \textsf{xt\_IPMARK} is not much different, albeit simple
+enough to show what it does:
+\begin{lyxcode}
+\textbf{static~unsigned~int}~ipmark\_tg4(\textbf{struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~\textbf{const~struct}~xt\_target\_param~\textbf{{*}}par)~\\
+\{~\\
+~~~~~~~~\textbf{const~struct}~xt\_ipmark\_tginfo~\textbf{{*}}info~=~par->targinfo;~\\
+~~~~~~~~\textbf{const~struct}~iphdr~\textbf{{*}}iph~=~ip\_hdr(skb);~\\
+~~~~~~~~\textbf{uint32\_t}~mark;~\\
+~\\
+~~~~~~~~\textbf{if}~(info->sel~==~XT\_IPMARK\_SRC)~\\
+~~~~~~~~~~~~~~~~mark~=~ntohl(iph->saddr);~\\
+~~~~~~~~\textbf{else}~\\
+~~~~~~~~~~~~~~~~mark~=~ntohl(iph->daddr);~\\
+~\\
+~~~~~~~~mark~>\textcompwordmark{}>=~info->shift;~\\
+~~~~~~~~mark~~\&=~info->andmask;~\\
+~~~~~~~~mark~~|=~info->ormask;~\\
+~~~~~~~~skb->mark~=~mark;~\\
+~~~~~~~~\textbf{return}~XT\_CONTINUE;~\\
+\}
+\end{lyxcode}
+
+\subsection{Setting up a NAT mapping}
+
+Another common target scenario is setting up a NAT mapping for a connection.
+To do this, a range of addresses and/or ports that the NAT engine
+may use must be handed to \texttt{\index{nf_nat_setup_info@\texttt{nf\_nat\_setup\_info}}nf\_nat\_\-setup\_info}.
+Additionally, the target is only valid in the \textsf{nat} table.
+\texttt{\index{struct nf_nat_range@\texttt{struct nf\_nat\_range}}struct
+nf\_nat\_range} and the \texttt{IP\_NAT\_}{*} defines are available
+through \texttt{\index{net/netfilter/nf_nat.h@\textit{net/netfilter/nf\_nat.h}}<net\slash{}netfilter\slash{}nf\_nat.h>}.
+\begin{lyxcode}
+\textbf{static~unsigned~int}~marksnat\_tg(\textbf{struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~\textbf{const~struct}~xt\_target\_param~\textbf{{*}}par)~\\
+\{~\\
+~~~~~~~~\textbf{const~struct}~iphdr~\textbf{{*}}iph~=~ip\_hdr(skb);~\\
+~~~~~~~~\textbf{struct}~nf\_nat\_range~range~=~\{\};~\\
+~~~~~~~~\textbf{struct}~nf\_conn~\textbf{{*}}ct;~\\
+~\\
+~~~~~~~~\textbf{/{*}~}\textrm{\textit{for~debug}}\textbf{~{*}/}~\\
+~~~~~~~~ct~=~nf\_ct\_get(skb,~\&ctinfo);~\\
+~~~~~~~~NF\_CT\_ASSERT(ct~!=~NULL~\&\&~(ctinfo~==~IP\_CT\_NEW~||~\\
+~~~~~~~~~~~~~~~~~~~~~ctinfo~==~IP\_CT\_RELATED));
+\end{lyxcode}
+There are currently three range flags available. \texttt{\index{IP_NAT_RANGE_MAP_IPS@\texttt{IP\_NAT\_RANGE\_MAP\_IPS}}IP\_NAT\_\-RANGE\_\-MAP\_IPS}
+advises the NAT subsystem to do translation on the layer\nobreakdash-3
+addresses, \texttt{\index{IP_NAT_RANGE_PROTO_SPECIFIED@\texttt{IP\_NAT\_RANGE\_PROTO\_SPECIFIED}}IP\_NAT\_\-RANGE\_\-PROTO\_\-SPECIFIED}
+makes sure that the given layer\nobreakdash-4 protocol port range
+in \texttt{range.min} and \texttt{range.max} are used, and \texttt{\index{IP_NAT_RANGE_PROTO_RANDOM@\texttt{IP\_NAT\_RANGE\_PROTO\_RANDOM}}IP\_NAT\_\-RANGE\_\-PROTO\_\-RANDOM},
+with which \texttt{range.min} and \texttt{range.max} are ignored and
+instead, the NAT engine selects a randomly-chosen port number at runtime.
+\begin{lyxcode}
+~~~~~~~~range.flags~~~=~IP\_NAT\_RANGE\_MAP\_IPS;~\\
+~~~~~~~~range.min\_ip~~=~ntohl(iph->saddr)~\&~0xFFFFFF00;~\\
+~~~~~~~~range.min\_ip~|=~skb->mark~\&~0xFF;~\\
+~~~~~~~~range.min\_ip~~=~htonl(range.min\_ip);~\\
+~~~~~~~~range.max\_ip~~=~range.min\_ip;
+\end{lyxcode}
+Shown here is a sample mapping dependent upon the Netfilter mark,
+using the lower 8 bits of the mark for constructing the new (source)
+address, and the next 8 and 8 bits for the port range in some way
+that the range is between {[}1024, 65535{]}.
+\begin{lyxcode}
+~~~~~~~~\textbf{if}~(iph->protocol~==~IPPROTO\_TCP~||~\\
+~~~~~~~~~~~~iph->protocol~==~IPPROTO\_UDP)~\{~\\
+~~~~~~~~~~~~~~~~range.flags~|=~IP\_NAT\_RANGE\_PROTO\_SPECIFIED;~\\
+~~~~~~~~~~~~~~~~range.min.tcp.port~=~(skb->mark~\&~0x00FF00)~<\textcompwordmark{}<~2;~\\
+~~~~~~~~~~~~~~~~range.max.tcp.port~=~(skb->mark~\&~0xFF0000)~>\textcompwordmark{}>~8;~\\
+~~~~~~~~\}~\\
+~\\
+~~~~~~~~\textbf{return}~\index{nf_nat_setup_info@\texttt{nf\_nat\_setup\_info}}nf\_nat\_setup\_info(ct,~\&range,~\index{IP_NAT_MANIP_DST@\texttt{IP\_NAT\_MANIP\_DST}}IP\_NAT\_MANIP\_DST);~\\
+\}
+\end{lyxcode}
+Destination NAT is furthermore only valid in the \textsf{\index{PREROUTING@\textsf{PREROUTING}}PREROUTING}
+and \textsf{\index{OUTPUT@\textsf{OUTPUT}}OUTPUT} hooks while Source
+NAT is only in the \textsf{\index{POSTROUTING@\textsf{POSTROUTING}}POSTROUTING}
+and \textsf{OUTPUT} chains. This has to be enforced by setting the
+\texttt{table} and \texttt{hooks} members of the registration structure
+accordingly.
+\begin{lyxcode}
+\textbf{\index{struct xt_target@\texttt{struct xt\_target}}static~struct}~xt\_target~marksnat\_tg\_reg~\_\_read\_mostly~=~\{~\\
+~~~~~~~~.name~~~~~~~=~\textquotedbl{}MARKSNAT\textquotedbl{},~\\
+~~~~~~~~.revision~~~=~0,~\\
+~~~~~~~~.family~~~~~=~NFPROTO\_IPV4,~\\
+~~~~~~~~.table~~~~~~=~\textquotedbl{}nat\textquotedbl{},~\\
+~~~~~~~~.hooks~~~~~~=~(1~<\textcompwordmark{}<~NF\_INET\_POST\_ROUTING),~\\
+~~~~~~~~.target~~~~~=~marksnat\_tg,~\\
+~~~~~~~~.targetsize~=~XT\_ALIGN(0),~\\
+~~~~~~~~.me~~~~~~~~~=~THIS\_MODULE,~\\
+\};
+\end{lyxcode}
+
+\subsection{Rule validation~-- \index{checkentry function}checkentry function\label{sub:xttarget-checkentry}}
+
+Like with Xtables matches, the \texttt{checkentry} function is called
+whenever a rule is about to be inserted and allows for checks to be
+done and run-time dependencies to be loaded, as discussed in section~\ref{sub:xtmatch-check}.
+Like before, the \textsf{checkentry} function may be omitted.
+
+The \textsf{xt\_TCPMSS} kernel module provides an example of how \texttt{checkentry}-based
+hook verification is done. Here, if the user manually sets the MSS,
+nothing special will happen. But when automatically setting the MSS
+relative to the PMTU, we need the PMTU value, which is only available
+after the routing decision, so one can only use this method to set
+the MSS from the \textsf{FORWARD}, \textsf{OUTPUT} and \textsf{POSTROUTING}
+chains, when an output route has been decided for the packet.
+\begin{lyxcode}
+\textbf{static~int}~tcpmss\_tg\_checkentry(\textbf{\index{struct xt_tgchk_param@\texttt{struct xt\_tgchk\_param}}const~struct}~xt\_tgchk\_param~\textbf{{*}}par)~\\
+\{~\\
+~~~~~~~~\textbf{const~struct}~tcpmss\_tg~\textbf{{*}}info~=~par->targinfo;~\\
+~\\
+~~~~~~~~\textbf{if}~(info->mss~==~XT\_TCPMSS\_CLAMP\_PMTU~\&\&~\\
+~~~~~~~~~~~~(hook\_mask~\&~\textasciitilde{}((1~<\textcompwordmark{}<~NF\_INET\_FORWARD)~|~\\
+~~~~~~~~~~~~(1~<\textcompwordmark{}<~NF\_INET\_LOCAL\_OUT)~|~\\
+~~~~~~~~~~~~(1~<\textcompwordmark{}<~NF\_INET\_POST\_ROUTING)))~!=~0)~\\
+~~~~~~~~~~~~~~~~\textbf{return}~-EINVAL;~\\
+~~~~~~~~\textbf{return}~0;~\\
+\}
+\end{lyxcode}
+
+\subsection{Rule destruction~-- destroy function}
+
+As with matches, targets can have a \texttt{destroy} function as a
+counterpart to \texttt{checkentry}. It may be omitted, too.
+\begin{lyxcode}
+\textbf{static~void}~xyz\_tg\_destroy(\textbf{\index{struct xt_tgdtor_param@\texttt{struct xt\_tgdtor\_param}}const~struct}~xt\_tgdtor~\textbf{{*}}par)~\\
+\{~\\
+~~~~~~~~pr\_info(\textquotedbl{}A~\textbackslash{}\textquotedbl{}\%s\textbackslash{}\textquotedbl{}~target~was~destroyed.\textbackslash{}n\textquotedbl{},~\\
+~~~~~~~~~~~~~~~~par->target->name);~\\
+\}
+\end{lyxcode}
+
+\subsection{Notes for in-tree modifications}
+
+If you depend on a certain table like \textsf{mangle}, \textsf{nat}
+or \textsf{raw}, you should add a dependency line in the \index{Kconfig}Kconfig
+file for your target. For some reason, this is not done for the \textsf{filter}
+table; anyway:
+\begin{lyxcode}
+\textbf{config}~NETFILTER\_XT\_TARGET\_CONNMARK~\\
+~~~~~~~~\textbf{tristate}~'\textquotedbl{}CONNMARK\textquotedbl{}~target~support'~\\
+~~~~~~~~\textbf{depends~on}~IP\_NF\_MANGLE~||~IP\_NF6\_MANGLE
+\end{lyxcode}
+Tables are still per-family (i.\,e.\ not generic enough to be handled
+in \texttt{x\_tables.c}), which is why there are two symbols to depend
+on (\texttt{\index{CONFIG_IP_NF_MANGLE@\texttt{CONFIG\_IP\_NF\_MANGLE}}IP\_NF\_\-MANGLE}
+(\texttt{CONFIG\_\-IP\_\-NF\_\-MANGLE}) and \texttt{\index{CONFIG_IP_NF6_MANGLE@\texttt{CONFIG\_IP\_NF6\_MANGLE}}IP\_NF6\_\-MANGLE}).
+Other symbols are \texttt{\index{CONFIG_IP_NF_RAW@\texttt{CONFIG\_IP\_NF\_RAW}}IP\_NF\_RAW}
+and \texttt{\index{IP_NF6_RAW@\texttt{IP\_NF6\_RAW}}IP\_NF6\_RAW}
+for the \textsf{\index{raw table}raw} table, and \texttt{\index{CONFIG_NF_NAT@\texttt{CONFIG\_NF\_NAT}}NF\_NAT}
+for the (IPv4) \textsf{nat} table. IPv6 does not have a \textsf{nat}
+table.\clearpage{}
+
+
+\part{Connection Tracking}
+
+There are no specific prerequisites. The API has remained pretty much
+the same over at least 2.6.23 to 2.6.25. There have been slight type
+changes for 2.6.26(-rc1) (and which will be used here). Xtables-addons
+does not provide API compatibility coverage for connection tracking
+yet as there are no modules merged that would require such, but its
+build system might still be very handy in writing a module.
+
+
+\section{nf\_conn structure}
+
+Sometimes it is necessary to retrieve connection parameters. The \texttt{\index{nf_ct_get@\texttt{nf\_ct\_get}}nf\_ct\_get}
+function will find the connection associated with a packet, if there
+is such, and return it along with the connection status. For \texttt{nf\_ct\_get},
+you need to include \texttt{\index{net/netfilter/nf_conntrack.h@\textit{net/netfilter/nf\_conntrack.h}}<net\slash{}netfilter\slash{}nf\_conntrack.h>},
+and for \texttt{\index{enum ip_conntrack_info@\texttt{enum ip\_conntrack\_info}}enum
+ip\_conntrack\_info}, you will need \texttt{\index{linux/netfilter/nf_conntrack_common.h@\textit{linux/netfilter/nf\_conntrack\_common.h}}<linux\slash{}netfilter\slash{}nf\_conntrack\_common.h>}.
+The reason this is split is that the \texttt{linux/} directory contains
+headers which are exported to userspace, and the values for constants
+like \texttt{\index{IP_CT_NEW@\texttt{IP\_CT\_NEW}}IP\_CT\_NEW} are
+surely useful in userspace too, while \texttt{nf\_ct\_get} is a function
+only available in the kernel.
+\begin{lyxcode}
+\textbf{\#include}~<linux/netfilter/nf\_conntrack\_common.h>~\\
+~\\
+\textbf{enum}~ip\_conntrack\_info~ctinfo;~\\
+\textbf{struct}~nf\_conn~\textbf{{*}}ct;~\\
+~\\
+ct~=~nf\_ct\_get(skb,~\&ctinfo);
+\end{lyxcode}
+There exist a multitude of connection states and statuses, and you
+can match all of them with the \textsf{\index{xt_conntrack@\textsf{xt\_conntrack}}conntrack}
+match in Xtables, or print the connection information with \textsf{\index{xt_LOGMARK@\textsf{xt\_LOGMARK}}xt\_LOGMARK},
+a target extension in the Xtables-addons package. Note that the connection
+tracking subsystem is invoked after the \textsf{\index{raw table}raw}
+table has been processed, but before the \textsf{\index{mangle table}mangle}
+table.
+\begin{lyxcode}
+\textbf{if}~(ct~==~NULL)~\\
+~~~~~~~~pr\_info(\textquotedbl{}This~is~-{}-ctstate~INVALID\textbackslash{}n\textquotedbl{});
+\end{lyxcode}
+\texttt{ct} can be \texttt{NULL} if the packet has been declared \textsf{\index{INVALID@\textsf{INVALID}}INVALID}
+by the connection tracking subsystem. This can happen for example
+if a TCP SYN is sent on an already-existing connection.
+\begin{lyxcode}
+\textbf{else~if}~(ct~==~\&nf\_conntrack\_untracked)~\\
+~~~~~~~~pr\_info(\textquotedbl{}This~one~is~not~tracked\textbackslash{}n\textquotedbl{});
+\end{lyxcode}
+The \textsf{\index{xt_NOTRACK@\textsf{xt\_NOTRACK}}NOTRACK} target
+can be used (in the \textsf{raw} table) to exempt a packet from connection
+tracking; this is especially useful when using the \textsf{\index{xt_TARPIT@\textsf{xt\_TARPIT}}TARPIT}
+target\citet{Chaostables}. It can also be used on any packet you
+would like to drop, but generally, people do not bother because it
+often incurs a rule duplication. Just dropping packets in the \textsf{\index{filter table}filter}
+table means that a connection entry will remain until it \index{timeout}times
+out, which generally works well enough. Default timeout depends on
+protocol and implementation, and is usually between 30 seconds to
+2 minutes when you drop connections marked as \textsf{NEW}. Speaking
+of \textsf{NEW}:
+\begin{lyxcode}
+\textbf{else~if}~(ctinfo~\%~IP\_CT\_IS\_REPLY~==~\index{IP_CT_NEW@\texttt{IP\_CT\_NEW}}IP\_CT\_NEW)~\\
+~~~~~~~~pr\_info(\textquotedbl{}This~is~the~first~packet~in~a~connection\textbackslash{}n\textquotedbl{});~\\
+\textbf{else~if}~(ctinfo~\%~IP\_CT\_IS\_REPLY~==~\index{IP_CT_RELATED@\texttt{IP\_CT\_RELATED}}IP\_CT\_RELATED)~\\
+~~~~~~~~pr\_info(\textquotedbl{}Welcome~Mr.~Bond,~we~have~been~expecting~you\textbackslash{}n\textquotedbl{});~\\
+\textbf{else~if}~(ctinfo~\%~IP\_CT\_IS\_REPLY~==~\index{IP_CT_ESTABLISHED@\texttt{IP\_CT\_ESTABLISHED}}IP\_CT\_ESTABLISHED)~\\
+~~~~~~~~pr\_info(\textquotedbl{}You~can~figure~out~this~one!\textbackslash{}n\textquotedbl{});
+\end{lyxcode}
+If \texttt{ct} is not \texttt{NULL} and not the fake connection tracking
+entry used for ``untracking'' packets, the connection is a valid
+one and its state can be found in \texttt{ctinfo}. \texttt{\index{enum ip_conntrack_info@\texttt{enum ip\_conntrack\_info}}enum
+ip\_conntrack\_ctinfo} combines both the connection state and the
+packet direction with an arithmetic add instead of a flag, which may
+seem a bit confusing. Here goes:
+\begin{itemize}
+\item \texttt{IP\_CT\_NEW}~-- new connection created by this packet
+\item \texttt{IP\_CT\_RELATED}~-- this packet starts a new but expected
+connection
+\item \texttt{IP\_CT\_ESTABLISHED}~-- connection is established, packet
+is in ``original'' direction
+\item \texttt{IP\_CT\_ESTABLISHED~+ \index{IP_CT_IS_REPLY@\texttt{IP\_CT\_IS\_REPLY}}IP\_CT\_IS\_REPLY}~--
+connection is established, packet is in ``reply'' direction
+\item \texttt{IP\_CT\_RELATED~+ IP\_CT\_IS\_REPLY}~-- expected new connection
+started, and packet is in the ``reply'' direction. It may be surprising
+how the first packet in a connection can be in the reply direction
+(note: reply direction of the \textit{expected} connection not the
+original one). This is actually used for ICMP replies, at which point
+\texttt{RELATED+REPLY} seems logical.
+\item \texttt{IP\_CT\_NEW~+ IP\_CT\_IS\_REPLY} is not used and not valid.
+\end{itemize}
+By using \texttt{ctinfo~\% IP\_CT\_IS\_REPLY} (in this case analogous
+to \texttt{ctinfo~\& \textasciitilde{}IP\_CT\_IS\_REPLY} if a flag
+would had been used), the connection state can be extracted. The direction
+in which the packet flows could be extracted using \texttt{ctinfo~/
+IP\_CT\_IS\_REPLY}, but the convenience macro \texttt{\index{CTINFO2DIR@\texttt{CTINFO2DIR}}CTINFO2DIR(ctinfo)},
+as defined in \texttt{\index{linux/netfilter/nf_conntrack_tuple_common.h@\textit{linux/netfilter/nf\_conntrack\_tuple\_common.h}}<linux\slash{}netfilter\slash{}nf\_conntrack\_\-tuple\_\-common.h>}
+uses an open-ended range comparison instead%
+\footnote{Something whose implementation details should be quickly forgotten
+again and the macro just be used. Too bad this mess cannot be easily
+changed as it is exported to userspace.%
+}.
+
+\clearpage{}
+
+
+\section*{Connection trackers\label{sec:connection-tracker}}
+
+Connection trackers are one of the essential parts of the connection
+tracking infrastructure, and related to that, stateful firewalling.
+Their job is to associate an IP packet with a connection and to assure
+the correctness of packets and their parameters. TCP streams for example
+are inspected for proper window size and correct state transitions.
+
+In it simplest case, the source and destination addresses are copied
+from the packet to a \texttt{\index{struct nf_conntrack_tuple@\texttt{struct nf\_conntrack\_tuple}}struct
+nf\_conntrack\_\-tuple}, the latter of which is then chained along
+with other tuples, forming the table of known connections.
+
+Connection tracking is split up into two categories, layer\nobreakdash-3
+and layer\nobreakdash-4 modules, allowing maximum modularity. There
+are also layer\nobreakdash-5 trackers though they are referred to
+as ``connection helpers'' because their existence does not effect
+the original connection, but future connections.
+
+
+\section{Layer-3 \index{connection tracker}connection tracker}
+
+
+\subsection{Objective}
+
+Of course, the question came up what geeky idea this chapter could
+be filled, and the results were disenchanting.
+
+Showcasing a sample layer\nobreakdash-3 connection tracker that is
+not one of those included in the kernel is going to be a very tough
+job. Not only because IPv4 and IPv6 are the most predominant protocols
+used, but also because the kernel does not currently have Netfilter
+hooks for anything besides these two plus a few special ones.
+
+This led to some quite interesting undertakings. Jan came up with
+a connection tracker for IPX, but reviving old DOS games in virtual
+machines turned out to be a longer-term task due to technical problems
+with modern operating systems. Resorting to an ARP connection tracker
+was not too fruitful either after recognizing that there were no Netfilter
+hooks in the ARP input\slash{}output paths. So that idea was also
+scrapped because we would like to avoid touching the kernel and putting
+the reader through a perhaps long recompile and installation cycle,
+being not only outside the scope of this book but also way beyond
+networking.
+
+
+\subsection{Structural definition}
+
+The structure for layer\nobreakdash-3 trackers is defined in \texttt{\index{net/netfilter/nf_conntrack_l3proto.h@\textit{net/netfilter/nf\_conntrack\_l3proto.h}}<net\slash{}netfilter\slash{}nf\_conntrack\_l3proto.h>}.
+It contains packet-to-tuple association, tuple inversion functions
+and one to obtain the layer\nobreakdash-4 protocol number.
+\begin{lyxcode}
+\textbf{\index{struct nf_conntrack_l3proto@\texttt{struct nf\_conntrack\_l3proto}}struct}~nf\_conntrack\_l3proto~\{~\\
+~~~~~~~~\textbf{const~char~{*}}name;~\\
+~~~~~~~~\textbf{uint16\_t}~l3proto;~\\
+~\\
+~~~~~~~~\textbf{bool~({*}}pkt\_to\_tuple\textbf{)}(\textbf{const~struct}~sk\_buff~\textbf{{*}}skb,~\textbf{unsigned~int}~nhoff,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{struct}~nf\_conntrack\_tuple~\textbf{{*}}tuple);~\\
+~~~~~~~~\textbf{bool~({*}}invert\_tuple\textbf{)}(\textbf{struct}~nf\_conntrack\_tuple~\textbf{{*}}inverse,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{const~struct}~nf\_conntrack\_tuple~\textbf{{*}}orig);~\\
+~~~~~~~~\textbf{int~({*}}print\_tuple\textbf{)}(\textbf{struct}~seq\_file~\textbf{{*}},~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{const~struct}~nf\_conntrack\_tuple~\textbf{{*}});~\\
+~\\
+~~~~~~~~\textbf{int~({*}}get\_l4proto\textbf{)}(\textbf{const~struct}~sk\_buff~\textbf{{*}}skb,~\textbf{unsigned~int}~nhoff,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{unsigned~int~{*}}dataoff,~\textbf{uint8\_t~{*}}protonum);~\\
+~~~~~~~~\textbf{struct}~module~\textbf{{*}}me;~\\
+\};
+
+
+\end{lyxcode}
+Layer\nobreakdash-3 connection trackers are pretty useless without
+an actual layer\nobreakdash-4 part. The \texttt{\index{pkt_to_tuple@\texttt{pkt\_to\_tuple}}pkt\_to\_tuple}
+and \texttt{\index{invert_tuple@\texttt{invert\_tuple}}invert\_tuple}
+functions will be called, but since that is all the \texttt{nf\_conntrack\_l3proto}
+structure makes available, you will not be seeing any entries in the
+Netfilter connection table, observable by running `\texttt{\index{conntrack@\textsf{conntrack}}conntrack
+-L}` or looking at the kernel-provided map at \texttt{/proc\slash{}net\slash{}nf\_conntrack}.
+Only when there is an appropriate layer\nobreakdash-4 tracker registered,
+connection tracking will actually be done and events be generated
+that can be monitored using `\texttt{conntrack -E}`.
+
+The \texttt{\index{get_l4proto@\texttt{get\_l4proto}}get\_l4proto}
+function should inspect the packet and return the layer\nobreakdash-4
+protocol number from the nexthdr field (IPv6) or the Protocol field
+(IPv4). It may return \texttt{\index{NF_ACCEPT@\texttt{NF\_ACCEPT}}-NF\_ACCEPT}
+if the connection is not to be tracked.
+
+
+\subsection{Generic L4 tracking}
+
+While there are only layer\nobreakdash-4 trackers for the most common
+protocols (actually protocols where it makes sense to do so), there
+is a not insubstantial number of protocols that get tracked, as far
+as that is possible, using a generic tracker. \index{AH}AH and \index{ESP}ESP
+are two that fall into this category, for example.
+
+The generic tracker maps all packets for a layer\nobreakdash-4 protocol
+to one connection, this is as good as the logic can get. The connection
+tracking table will then show an entry like:
+\begin{lyxcode}
+\#~\textbf{conntrack~-L~|~grep~\textquotedbl{}\textasciicircum{}unknown}\textquotedbl{}~\\
+unknown~~50~537~src=192.168.0.137~dst=192.168.16.34~packets=12~bytes=1456~\\
+src=192.168.16.34~dst=192.168.0.137~packets=12~bytes=2704~mark=0~use=1
+\end{lyxcode}
+We hope the reader will excuse the shortness of this chapter. Be assured
+that writing a layer\nobreakdash-3 tracker, should the need arise,
+is much the same like a layer\nobreakdash-4 tracker which will be
+covered right in the next chapter.
+
+\clearpage{}
+
+
+\section{Layer-4 connection tracker}
+
+
+\subsection{Structural definition}
+
+The struct for layer\nobreakdash-4 trackers is contained in \texttt{\index{net/netfilter/nf_conntrack_l4proto.h@\textit{net/netfilter/nf\_conntrack\_l4proto.h}}<net\slash{}netfilter\slash{}nf\_conntrack\_l4proto.h>}
+and is as follows. The order in which the callbacks \texttt{error}--\texttt{destroy}
+are arranged here depict the order they are executed in as a packet
+flows through.
+\begin{lyxcode}
+\textbf{\index{struct nf_conntrack_l4proto@\texttt{struct nf\_conntrack\_l4proto}}struct}~nf\_conntrack\_l4proto~\{~\\
+~~~~~~~~\textbf{const~char~{*}}name;~\\
+~~~~~~~~\textbf{uint16\_t}~l3proto;~\\
+~~~~~~~~\textbf{uint8\_t}~l4proto;~\\
+~\\
+~~~~~~~~\textbf{int~({*}}error\textbf{)}(\textbf{struct}~sk\_buff~\textbf{{*}},~\textbf{unsigned~int}~dataoff,~\\
+~~~~~~~~~~~~~~~~~~~~~\textbf{enum}~ip\_conntrack\_info~\textbf{{*}}ctinfo,~\textbf{unsigned~int}~pf,~\\
+~~~~~~~~~~~~~~~~~~~~~\textbf{unsigned~int}~hooknum);~\\
+~~~~~~~~\textbf{bool~({*}}pkt\_to\_tuple\textbf{)}(\textbf{const~struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{unsigned~int}~dataoff,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{struct}~nf\_conntrack\_tuple~{*}tuple);~\\
+~~~~~~~~\textbf{bool~({*}}invert\_tuple\textbf{)}(\textbf{struct}~nf\_conntrack\_tuple~{*}inverse,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{const~struct}~nf\_conntrack\_tuple~\textbf{{*}}original);~\\
+~~~~~~~~\textbf{int~({*}}packet\textbf{)}(\textbf{struct}~nf\_conn~\textbf{{*}}ct,~\textbf{const~struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~~~~~~~~~~~~~~~~~~~\textbf{unsigned~int}~dataoff,~\textbf{enum}~ip\_conntrack\_info~ctinfo,~\\
+~~~~~~~~~~~~~~~~~~~~~~\textbf{unsigned~int}~pf,~\textbf{unsigned~int}~hooknum);~\\
+~~~~~~~~\textbf{bool~({*}}new\textbf{)}(\textbf{struct}~nf\_conn~\textbf{{*}}ct,~\textbf{const~struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~~~~~~~~~~~~~~~~~\textbf{unsigned~int}~dataoff);~\\
+~~~~~~~~\textbf{void~({*}}destroy\textbf{)}(\textbf{struct}~nf\_conn~\textbf{{*}}ct);~\\
+~\\
+~~~~~~~~\textbf{int~({*}}print\_conntrack\textbf{)}(\textbf{struct}~seq\_file~\textbf{{*}}s,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{const~struct}~nf\_conn~\textbf{{*}}ct);~\\
+~~~~~~~~\textbf{int~({*}}print\_tuple\textbf{)}(\textbf{struct}~seq\_file~\textbf{{*}}s,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{const~struct}~nf\_conntrack\_tuple~\textbf{{*}}tuple);~\\
+~\\
+~~~~~~~~\textbf{struct}~module~\textbf{{*}}me;~\\
+\};
+\end{lyxcode}
+It also has packet-to-tuple conversion\slash{}association and tuple
+inversion, but also ``packet'', ``new'' and ``destroy''. While
+these extra callbacks are not layer\nobreakdash-4 specific, the \texttt{\index{struct nf_conntrack_l3proto@\texttt{struct nf\_conntrack\_l3proto}}nf\_conntrack\_l3proto}
+structure does not contain them%
+\footnote{The unused callbacks in \texttt{struct nf\_conntrack\_l3proto} were
+removed for 2.6.26.%
+} due to lack of use.
+
+
+\subsection{Objective}
+
+In this chapter we have a look at an \index{ESP}ESP connection tracking
+module. It works absolutely, but has no practical field value because
+the generic tracking handles the common daily usage with IPsec traffic
+just as well. If you need to track specific SPI streams however for
+some very obscure reason, this module is for you.
+
+ESP is encrypted and hence there is no way for a non-endpoint to look
+inside it%
+\footnote{Tunnel endpoints may use the \index{xt_policy@\textsf{xt\_policy}}``\textsf{policy}''
+match to inspect transformed connections.%
+}. Even so, for ``tunnel'' mode and actually any sort of (unencrypted)
+tunnels\slash{}encapsulation, we often do not want to inspect the
+inner contents, because that is what a tunnel is about~--- to track
+the tunnel connection itself%
+\footnote{Which does not mean that there would be no way to analyze in-tunnel
+traffic (unencrypted tunnels) with only stock Linux kernels.%
+}.
+
+
+\subsection{Module initialization}
+
+The \texttt{name} member gives a short identifying string to conntrack
+which is used for reporting to userspace. It should be kept simple,
+and should definitely not have any spaces in it. \texttt{l3proto}
+and \texttt{l4proto} specify the layer\nobreakdash-3 and layer\nobreakdash-4
+protocols for which this helper should be invoked, respectively. Note
+that in case of an IPv6 packet, the first non-extension header's protocol
+number or, if that did not exist, the last header's protocol number
+is used for matching with a loaded connection tracking module~---
+it is therefore currently not possible%
+\footnote{In previous footnotes I always said ``already developed'', now here
+is something that is yet to be done!%
+} to invoke a helper based on e.\,g.\ the presence of an IPv6 Destination
+Options header.
+\begin{lyxcode}
+\textbf{\index{struct nf_conntrack_l4proto@\texttt{struct nf\_conntrack\_l4proto}}static~struct}~nf\_conntrack\_l4proto~esp\_ctrack\_reg~\_\_read\_mostly~=~\{~\\
+~~~~~~~~.name~~~~~~~~~~~~=~\textquotedbl{}esp\textquotedbl{},~\\
+~~~~~~~~.l3proto~~~~~~~~~=~\index{NFPROTO_IPV6@\texttt{NFPROTO\_IPV6}}NFPROTO\_IPV6,~\\
+~~~~~~~~.l4proto~~~~~~~~~=~\index{IPPROTO_ESP@\texttt{IPPROTO\_ESP}}IPPROTO\_ESP,
+\end{lyxcode}
+The rest of the struct consists of pointers to functions that make
+up the connection tracking helper module:
+\begin{itemize}
+\item \texttt{esp\_ctrack\_pkt2tuple}~-- mapping a packet to a (connection)
+tuple
+\item \texttt{esp\_ctrack\_new}~-- function that is called once a new ``connection''
+(read: connection tracking entry) is added
+\item \texttt{esp\_ctrack\_packet}~-- packet processing function, e.\,g.
+updating the internal tracking state. TCP uses this to go from \textsf{SYN\_SENT}
+to \textsf{SYN\_RECV}, for example.
+\item \texttt{esp\_ctrack\_invtuple}~-- inverting a tuple
+\item \texttt{esp\_ctrack\_prct}~-- print connection tracking entry
+\item \texttt{esp\_ctrack\_prtuple}~-- print connection tuple\end{itemize}
+\begin{lyxcode}
+~~~~~~~~.pkt\_to\_tuple~~~~=~esp\_ctrack\_pkt2tuple~\\
+~~~~~~~~.new~~~~~~~~~~~~~=~esp\_ctrack\_new~\\
+~~~~~~~~.packet~~~~~~~~~~=~esp\_ctrack\_packet,~\\
+~~~~~~~~.invert\_tuple~~~~=~esp\_ctrack\_invtuple,~\\
+~~~~~~~~.print\_conntrack~=~esp\_ctrack\_prct,~\\
+~~~~~~~~.print\_tuple~~~~~=~esp\_ctrack\_prtuple,~\\
+~~~~~~~~.me~~~~~~~~~~~~~~=~THIS\_MODULE,~\\
+\};
+\end{lyxcode}
+
+\subsection{The tuple structures}
+
+\texttt{\index{union nf_conntrack_man_proto@\texttt{union nf\_conntrack\_man\_proto}}union
+nf\_conntrack\_man\_proto} contains the ``manipulable protocol''%
+\footnote{Well, this is what the abbreviation man\_proto suggests to me, given
+that the data stored in it is can be modified as part of NAT.%
+} part, somehow a collective term for (one side of) the layer\nobreakdash-4
+specific tuple data such as ports.
+\begin{lyxcode}
+\textbf{\index{union nf_conntrack_man_proto@\texttt{union nf\_conntrack\_man\_proto}}union}~nf\_conntrack\_man\_proto~\{~\\
+~~~~~~~~\_\_be16~all;~\\
+~\\
+~~~~~~~~\textbf{struct}~\{~\\
+~~~~~~~~~~~~~~~~\_\_be16~port;~\\
+~~~~~~~~\}~tcp;~\\
+~~~~~~~~...~\\
+\};
+\end{lyxcode}
+There will be a member called \texttt{all}; its exact type depends
+on how the developers laid \textsf{nf\_conntrack} out for a particular
+kernel release. It is internal to \textsf{nf\_conntrack} as an optimization
+to tuple matching and should rather not be used in any way by modules.
+However, since an external module might want to use the available
+space without patching any of the kernel files, some hackery is needed,
+and it comes with its limitations too.
+\begin{lyxcode}
+\textbf{struct}~esp\_man\_proto~\{~\\
+\textbf{\#if~sizeof(union~nf\_conntrack\_man\_proto)~>=~sizeof(uint32\_t)}~\\
+~~~~~~~~\_\_be32~spi;~\\
+\textbf{\#elif~sizeof(union~nf\_conntrack\_man\_proto)~>=~sizeof(uint16\_t)}~\\
+~~~~~~~~\_\_be16~spi;~\\
+\textbf{\#endif}~\\
+\};~\\
+~\\
+\textbf{static~inline~struct}~esp\_man\_proto~\textbf{{*}}
+
+esp\_priv(\textbf{union}~nf\_conntrack\_man\_proto~\textbf{{*}}ptr)~\\
+\{~\\
+~~~~~~~~\textbf{return}~(\textbf{void~{*}})ptr;~\\
+\}
+\end{lyxcode}
+This does look indeed gory and ugly, but it allows us to use at least
+the 16 bits of space that \texttt{union nf\_conntrack\_man\_proto}
+is big in 2.6.25. The compound is only 16 bits in size since all in-kernel
+connection trackers only need to track this much. Therefore, the sample
+ESP module needs to make a cut in the packet-to-tuple mapping correctness~---
+the SPI truncation may cause packets to be falsely attributed to a
+connection, but I will assume that for any non-static key setup you
+will be using random SPI numbers generated by an \index{IPsec}IPsec/\index{IKE}IKE
+daemon. For some future modules these 16 bits may not be enough and
+would warrant a change of \texttt{union nf\_conntrack\_man\_proto}
+in the kernel source.
+
+
+\subsection{Packet to conntrack}
+
+When a packet enters the connection tracking subsystem, it is passed
+on to the appropriate layer\nobreakdash-4 connection tracking module,
+to the \texttt{\index{pkt_to_tuple@\texttt{pkt\_to\_tuple}}pkt\_to\_tuple}
+hook. This function should map the packet to a connection tuple, the
+latter of which uniquely identifies a ``connection'' in Netfilter
+terms.
+\begin{lyxcode}
+\textbf{static~int}~esp\_ctrack\_pkt2tuple(\textbf{const~struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~\textbf{unsigned~int}~dataoff,~\textbf{struct}~nf\_conntrack\_tuple~\textbf{{*}}tuple)~\\
+\{~\\
+~~~~~~~~\textbf{const~struct}~ip\_esp\_hdr~\textbf{{*}}ptr;~\\
+~~~~~~~~\textbf{struct}~esp\_man\_proto~\textbf{{*}}man;~\\
+~~~~~~~~\textbf{struct}~ip\_esp\_hdr~buf;
+\end{lyxcode}
+Since only the first four bytes of the ESP header are needed to obtain
+the SPI, passing in \texttt{4} for the third argument is sufficient;
+no need to retrieve the entire ESP header.
+\begin{lyxcode}
+~~~~~~~~ptr~=~skb\_header\_pointer(skb,~dataoff,~4,~\&buf);~\\
+~~~~~~~~\textbf{if}~(ptr~==~NULL)~\\
+~~~~~~~~~~~~~~~~\textbf{return}~false;~\\
+~~~~~~~~man~=~esp\_priv(\&tuple->dst.u);
+
+~~~~~~~~man->spi~=~ptr->spi;~\\
+~~~~~~~~\textbf{return}~true;~\\
+\}
+\end{lyxcode}
+The connection tracking core zeroes the tuple before it is handed
+to the layer\nobreakdash-3 and layer\nobreakdash-4 connection trackers.
+When the \texttt{esp\_ctrack\_pkt2tuple} function receives it, it
+is guaranteed that \texttt{tuple->src.u} and \texttt{tuple->dst.u}
+(the layer\nobreakdash-4 parts) are zeroed, and \texttt{tuple->src.u3}
+and \texttt{tuple->dst.u3} (the layer\nobreakdash-3 parts) are filled
+in.
+
+
+\subsection{Tuple inversion}
+
+When a packet arrives, it gets compared to all pre-existing tuples
+to see if a packet is in the other direction of a connection.
+
+The connection tracking engine gets fed packets without knowing what
+\index{interface}interface they came on in or which interface they
+will leave on, if any%
+\footnote{This information can be retrieved from the skb, but that is an implementation
+detail of sk\_buff and should be avoided if possible.%
+}. Connection tracking does not even want to know that, usually, since
+policy routing may cause the packet to enter or leave on different
+interfaces each time, especially in setups with load balancing.
+
+\index{IPsec}IPsec flows are unidirectional in nature, and they do
+not provide a way to find something that identifies the direction
+in the other direction. In TCP for example, each packet has both a
+source and a destination port. In an ESP packet however, you will
+only find a destination SPI (``port''). Therefore, \index{tuple inversion}tuple
+inversion is not possible for ESP and the function should return \texttt{false}.
+\begin{lyxcode}
+\textbf{static~bool}~esp\_ctrack\_invtuple(\textbf{struct}~nf\_conntrack\_tuple~\textbf{{*}}inverse,~\\
+~~~~\textbf{const~struct}~nf\_conntrack\_tuple~\textbf{{*}}original)~\\
+\{~\\
+~~~~~~~~\textbf{return}~false;~\\
+\}
+\end{lyxcode}
+But in most cases where tuples are invertible, all it takes is to
+actually do the inversion. \texttt{orig} and \texttt{tuple} point
+to different memory locations, so no temporary copying to the stack
+is needed.
+\begin{lyxcode}
+\textbf{static~bool}~tcp\_invert\_tuple(\textbf{struct}~nf\_conntrack\_tuple~\textbf{{*}}tuple,~\\
+~~~~\textbf{const~struct}~nf\_conntrack\_tuple~\textbf{{*}}orig)~\\
+\{~\\
+~~~~~~~~inverse->src.u.all~=~original->dst.u.all;~\\
+~~~~~~~~inverse->dst.u.all~=~original->src.u.all;~\\
+\}
+\end{lyxcode}
+
+\subsection{Dumping entries}
+
+There exist two hooks which are called for dumping information about
+the connection and the tuple. The first is for example used by the
+TCP tracker to return the state of the TCP connection (e.\,g.\ \texttt{SYN\_SENT}),
+while the second is used to print per-tuple layer\nobreakdash-4 parameters
+such as source and destination port, or SPI for ESP.
+\begin{lyxcode}
+\textbf{static~int}~esp\_ctrack\_prct(\textbf{struct}~seq\_file~\textbf{{*}}s,~\textbf{const~struct}~nf\_conn~\textbf{{*}}ct)~\\
+\{~\\
+~~~~~~~~\textbf{/{*}~}\textrm{\textit{Nothing~special~to~report}}\textbf{~{*}/}~\\
+~~~~~~~~\textbf{return}~0;~\\
+\}
+\end{lyxcode}
+The return value for the two functions shall be that of \texttt{\index{seq_printf@\texttt{seq\_printf}}seq\_printf},
+which returns the number of bytes written to the stream.
+\begin{lyxcode}
+\textbf{static~int}~esp\_ctrack\_prtuple(\textbf{struct}~seq\_file~\textbf{{*}}s,~\\
+~~~~\textbf{const~struct}~nf\_conntrack\_tuple~\textbf{{*}}tuple)~\\
+\{~\\
+~~~~~~~~\textbf{unsigned~int}~spi~=~ntohl(esp\_priv(\&tuple->dst.u));~\\
+~~~~~~~~\textbf{return}~seq\_printf(s,~\textquotedbl{}spi=0x\%x~\textquotedbl{},~spi);~\\
+\}
+\end{lyxcode}
+
+\subsection{Summary}
+
+To see that the module works, you can put the module on any host through
+which some ESP traffic flows. Trying to use this connection tracking
+module on a tunnel/transport endpoint will not work as intended, because
+the decapsulation takes place before Connection Tracking gets to see
+the skb, and encapsulation takes place after CT already saw the skb,
+though Xtables will see the skb twice~--- once decapsulated and once
+encapsulated.
+
+So under the assumption that the ESP tracking module is put to a test
+on a host that is not an endpoint, one can observe the spawning of
+a new Netfilter connection once a ESP packet has been sighted:
+\begin{lyxcode}
+\#~\textbf{conntrack~-E}~\\
+{[}NEW{]}~esp~50~120~src=2001:db8::31:1~dst=2001:db8::32:2~spi=0xdc0adc5e~\\
+{[}ASSURED{]}~src=2001:db8::31:1~dst=2001:db8::32:2~sport=22~dport=39760
+\end{lyxcode}
+\clearpage{}
+
+
+\section{Connection tracking helper\label{sec:cthelper}}
+
+\begin{lyxgreyedout}
+This section is incomplete.%
+\end{lyxgreyedout}
+
+
+A connection tracking helper is a module that inspects packet flows,
+more generically, the payload of packets, and sets up connection tracking
+expectations. They can then be matched in the Xtables firewall with
+the \textsf{RELATED} (for the first packet) and \textsf{ESTABLISHED}
+(all further packets) state bits of the conntrack match. This is commonly
+seen in user scripts as
+\begin{lyxcode}
+ip6tables~-m~conntrack~-{}-ctstate~RELATED,ESTABLISHED
+\end{lyxcode}
+In this chapter, we will glimpse at a connection tracking helper that
+will look at HTTP streams and create expectations for further connections.
+
+When the Netfilter connection tracking subsystem is loaded, you can
+depend on all packets entering the stack to be already defragmented.
+
+
+\subsection{Naming convention}
+\begin{itemize}
+\item \texttt{http\_cthelper\_reg}~-- structure with metadata and vtable
+\item \texttt{http\_cthelper}~-- the main helper function
+\item \texttt{http\_cthelper\_destroy}~-- a destroy function (if used)
+\end{itemize}
+
+\subsection{Skeletal structure}
+
+The \texttt{struct nf\_conntrack\_helper} can be obtained by including
+\texttt{<net\slash{}netfilter\slash{}nf\_conntrack\_helper.h>}.
+\begin{lyxcode}
+\textbf{struct}~nf\_conntrack\_helper~\{~\\
+~~~~~~~~\textbf{const~char~{*}}name;~\\
+~~~~~~~~\textbf{unsigned~int}~max\_expected;~\\
+~~~~~~~~\textbf{unsigned~int}~timeout;~\\
+~\\
+~~~~~~~~\textbf{/{*}~}\textrm{\textit{Tuple~of~connection~to~analyze}}\textbf{~{*}/}~\\
+~~~~~~~~\textbf{struct}~nf\_conntrack\_tuple~tuple;~\\
+~\\
+~~~~~~~~\textbf{/{*}~}\textrm{\textit{Our~helpful~function}}\textbf{~{*}/}~\\
+~~~~~~~~\textbf{int~({*}}help\textbf{)}(\textbf{struct}~sk\_buff~\textbf{{*}}skb,~\textbf{unsigned~int}~protoff,~\\
+~~~~~~~~~~~~~~~~~~~~\textbf{struct}~nf\_conn~\textbf{{*}}ct,~\textbf{enum}~ip\_conntrack\_info~ctinfo);~\\
+~~~~~~~~\textbf{void~({*}}destroy\textbf{)}(\textbf{struct}~nf\_conn~\textbf{{*}}ct);~\\
+~\\
+~~~~~~~~\textbf{struct}~module~\textbf{{*}}me;~\\
+\};
+\end{lyxcode}
+Besides internal fields that should not be meddled with (left them
+out in this document, of course), the structure contains function
+pointers for conversion from and to Netlink attributes, but that is
+currently outside the scope of this document.
+
+
+\subsection{Initialization}
+
+Though not quite visible directly, \texttt{struct nf\_conntrack\_helper}
+describes a connection tracker helper for exactly one tuple only,
+that is~--- in simple terms~--- one TCP/UDP port per \texttt{struct}.
+This may seem like a huge drawback given that protocols can generally
+be run over arbitrary port numbers, but this is how helpers currently
+are implemented. As a workaround, connection tracking helpers define
+an array of \texttt{nf\_conntrack\_helper}s and the user gets to choose
+a fixed port list the administrator wants to have inspected.
+\begin{lyxcode}
+\textbf{static~struct}~nf\_conntrack\_helper~ftp\_cthelper\_reg~\_\_read\_mostly~=~\{~\\
+~~~~~~~~.name~~~~~~~~~=~\textquotedbl{}ftp\textquotedbl{},~\\
+~~~~~~~~.max\_expected~=~1,~\\
+~~~~~~~~.timeout~~~~~~=~60,~\\
+~~~~~~~~.tuple~~~~~~~~=~\{~\\
+~~~~~~~~~~~~~~~~.src.l3num~~~~~~=~NFPROTO\_IPV4,~\\
+~~~~~~~~~~~~~~~~.dst.protonum~~~=~IPPROTO\_TCP,~\\
+~~~~~~~~~~~~~~~~.dst.u.tcp.port~=~21,~\\
+~~~~~~~~\},~\\
+~~~~~~~~.help~~~~~~~~~=~ike\_cthelper,~\\
+~~~~~~~~.me~~~~~~~~~~~=~THIS\_MODULE,~\\
+\};
+\end{lyxcode}
+Of course, this code block is just an example; the \texttt{nf\_conntrack\_ftp}
+module does the registration a bit more elegant in that it fills out
+the structure at module initialization time instead of typing it out,
+well, because the user can change them.
+
+\clearpage{}
+
+
+\part{Netfilter Core}
+
+
+\section{Netfilter Hooks}
+
+The networking code has a number of calls that invoke Netfilter, and
+everything that is tied to it (given the modules are loaded). The
+most common hook components are Xtables (firewall), connection tracking,
+IPv4 NAT engine and the IPVS Virtual Server. \texttt{ip6\_input.c}
+calls out to a specific hook:
+\begin{lyxcode}
+\textbf{return}~\index{NF_HOOK@\texttt{NF\_HOOK}}NF\_HOOK(NFPROTO\_IPV6,~\index{NF_INET_PRE_ROUTING@\texttt{NF\_INET\_PRE\_ROUTING}}NF\_INET\_PRE\_ROUTING,~skb,~\\
+~~~~~~~dev,~NULL,~ip6\_rcv\_finish);
+\end{lyxcode}
+which will invoke all prerouting hooks. \texttt{NF\_HOOK} is a monstrous
+macro crypt until it enters the real function, \texttt{nf\_hook\_slow},
+and I leave that to the particular developer to munge that part on
+his own. (No worries, just training you.)
+
+
+\subsection{Skeletal structure}
+
+\texttt{\index{struct nf_hook_ops@\texttt{struct nf\_hook\_ops}}struct
+nf\_hook\_ops} contains the vtable and metadata for a hook, like name
+and associated protocol. The definition can be obtained by including
+\texttt{\index{linux/netfilter.h@\textit{linux/netfilter.h}}<linux\slash{}netfilter.h>}.
+Hooks are per-protocol; one structure can only be registered for one
+protocol, so you need an array of \texttt{nf\_hook\_ops} if you plan
+to register multiple hooks.
+\begin{lyxcode}
+\textbf{\index{struct nf_hook_ops@\texttt{struct nf\_hook\_ops}}struct}~nf\_hook\_ops~\{~\\
+~~~~~~~~\textbf{unsigned~int}~pf;~\\
+~~~~~~~~\textbf{unsigned~int}~priority;~\\
+~~~~~~~~\textbf{unsigned~int}~hooknum;~\\
+~~~~~~~~\textbf{unsigned~int~({*}}hookfn\textbf{)}(\textbf{unsigned~int}~hooknum,~\textbf{struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{const~struct}~net\_device~\textbf{{*}}in,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{const~struct}~net\_device~\textbf{{*}}out,~\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textbf{int~({*}}okfn\textbf{)(struct}~sk\_buff~\textbf{{*})});~\\
+~~~~~~~~\textbf{struct}~module~\textbf{{*}}owner;~\\
+\}
+\end{lyxcode}
+
+\subsection{Initialization}
+
+The \texttt{pf} member associates the hook with the given group of
+calls. Possible values are listed in \texttt{netfilter.h}. The most
+common values are, of course, \texttt{\index{NFPROTO_IPV6@\texttt{NFPROTO\_IPV6}}NFPROTO\_IPV6},
+\texttt{\index{NFPROTO_IPV4@\texttt{NFPROTO\_IPV4}}NFPROTO\_IPV4},
+\texttt{\index{NFPROTO_ARP@\texttt{NFPROTO\_ARP}}NFPROTO\_ARP}, and
+\index{NFPROTO_BRIDGE@\texttt{NFPROTO\_BRIDGE}}\texttt{NFPROTO\_BRIDGE}.
+You will find only \texttt{NFPROTO\_IPV4} in \texttt{net\slash{}ipv4/}
+in the kernel tree, and only \texttt{NFPROTO\_IPV6} in \texttt{net/ipv6/}.
+
+\texttt{\index{priority@\texttt{priority}}priority} specifies where
+in the order of execution this hook gets executed. A few symbolic
+constants have been defined in \texttt{\index{linux/netfilter_ipv4.h@\textit{linux/netfilter\_ipv4.h}}<linux\slash{}netfilter\_ipv4.h>}
+and \texttt{\index{linux/netfilter_ipv6.h@\textit{linux/netfilter\_ipv6.h}}<linux\slash{}netfilter\_ipv6.h>}
+that can be used as a base for offsets, e.\,g.\ as the expression
+\texttt{NF\_IP6\_PRI\_FILTER~+1} to get a hook that runs after the
+\textsf{filter} table has been processed. The value you pass in here
+is largely up to the module author, bound by the desired effect.
+
+As with Xtables modules, the registration structure must not be const
+because fields in it will be modified by the implementation.
+\begin{lyxcode}
+\textbf{\index{struct nf_hook_ops@\texttt{struct nf\_hook\_ops}}static~struct}~nf\_hook\_ops~myhook\_ops~\_\_read\_mostly~=~\{~\\
+~~~~~~~~.pf~~~~~~~=~PF\_INET6,~\\
+~~~~~~~~.priority~=~1,~\\
+~~~~~~~~.hooknum~~=~NF\_INET\_LOCAL\_OUT,~\\
+~~~~~~~~.hookfn~~~=~myhook\_fn,~\\
+\};~\\
+~\\
+\textbf{static~int}~\_\_init~myhook\_init(\textbf{void})~\\
+\{~\\
+~~~~~~~~\textbf{return}~\index{nf_register_hook@\texttt{nf\_register\_hook}}nf\_register\_hook(\&myhook\_ops);~\\
+\}~\\
+~\\
+\textbf{static~void}~\_\_exit~myhook\_exit(\textbf{void})~\\
+\{~\\
+~~~~~~~~\index{nf_unregister_hook@\texttt{nf\_unregister\_hook}}nf\_unregister\_hook(\&myhook\_ops);~\\
+\}~\\
+~\\
+module\_init(myhook\_init);~\\
+module\_exit(myhook\_exit);
+\end{lyxcode}
+The hook infrastructure itself does not care about the \texttt{hooknum}
+either. A hook call specifies a certain hooknum and the hook module
+has to make something of it. It is generally used to encode the place
+the call originated; Xtables, NAT and connection tracking know of
+the five constants mentioned earlier (section \ref{sub:xttarget-initialization}),
+\texttt{NF\_INET\_\-}\{\texttt{PRE},\texttt{POST}\}\texttt{\_ROUTING},
+\texttt{NF\_INET\_\-LOCAL\_}\{\texttt{IN},\texttt{OUT}\} and \texttt{NF\_INET\_\-LOCAL\_OUT}. 
+
+
+\subsection{Main function}
+\begin{lyxcode}
+\textbf{static~unsigned~int}~myhook\_fn(\textbf{unsigned~int}~hooknum,~\textbf{struct}~sk\_buff~\textbf{{*}}skb,~\\
+~~~~\textbf{const~struct}~net\_device~\textbf{{*}}in,~\textbf{const~struct}~net\_device~\textbf{{*}}out,~\\
+~~~~\textbf{int~({*}}okfn\textbf{)(struct}~sk\_buff~\textbf{{*})})~\\
+\{~\\
+~~~~~~~~pr\_info(\textquotedbl{}Arr~matey!~-~Captain~Hook~approves~your~packet!\textbackslash{}n\textquotedbl{});~\\
+~~~~~~~~\textbf{return}~\index{NF_ACCEPT@\texttt{NF\_ACCEPT}}NF\_ACCEPT;
+
+\}
+\end{lyxcode}
+The possible values a hook function can return are similar to those
+of a target. There is no \texttt{\index{XT_RETURN@\texttt{XT\_RETURN}}XT\_RETURN},
+because that one does not make sense here, there is no jump chain
+in which we could return. There is also no \texttt{\index{XT_CONTINUE@\texttt{XT\_CONTINUE}}XT\_CONTINUE},
+which, at best, would be equal to \texttt{NF\_ACCEPT}, meaning that
+this hook allowed the packet to pass. Any other value indicates the
+packet has been ``consumed'', as the \texttt{linux/netfilter.h}
+header file puts it. (So all of the \texttt{NF\_}{*} constants as
+described in section~\ref{sub:xttarget-verdicts} can be used.)
+
+There are a few more not so common verdicts, mostly all internal to
+Netfilter, such as
+\begin{itemize}
+\item \texttt{\index{NF_QUEUE@\texttt{NF\_QUEUE}}NF\_QUEUE}~-- used by
+\textsf{\index{xt_NFQUEUE@\textsf{xt\_NFQUEUE}}xt\_NFQUEUE} to relay
+the packet to userspace for further processing
+\item \texttt{\index{NF_STOLEN@\texttt{NF\_STOLEN}}NF\_STOLEN}~-- Whereas
+\texttt{NF\_DROP} instructs Netfilter to drop the packet and free
+the skb, \texttt{NF\_STOLEN} indicates that the hook has taken care
+of it so Netfilter only drops it. Netfilter forgetting about the packet
+does not imply the packet is lost~--- the hook may retransmit or
+delay it, for example.
+\item \texttt{\index{NF_REPEAT@\texttt{NF\_REPEAT}}NF\_REPEAT}~-- causing
+a packet to be stopped and rerun through the current Netfilter hook.
+Connection tracking uses this to simply its code path.
+\item \texttt{\index{NF_STOP@\texttt{NF\_STOP}}NF\_STOP}~-- functionally
+the same as \texttt{NF\_ACCEPT}. (Used as annotation?)
+\end{itemize}
+\clearpage{}
+
+
+\part{Appendix}
+
+\appendix
+
+\section{Function reference\label{sec:function-reference}}
+
+This list shall give a brief overview of the most common or useful
+functions you can use with Xtables modules. (We have even left out
+\texttt{const} and \texttt{unsigned} qualifiers to not bloat the prototypes
+too much.)
+
+
+\paragraph*{Byte swapping}
+\begin{itemize}
+\item \texttt{\index{htons@\texttt{htons}}htons}, \texttt{\index{htonl@\texttt{htonl}}htonl},
+\texttt{\index{ntohs@\texttt{ntohs}}ntohs}, \texttt{\index{ntohl@\texttt{ntohl}}ntohl},
+\index{le16_to_cpu@\texttt{le16\_to\_cpu}}\texttt{le16\_to\_cpu},
+\index{le32_to_cpu@\texttt{le32\_to\_cpu}}\texttt{le32\_to\_cpu},
+\index{le64_to_cpu@\texttt{le64\_to\_cpu}}\texttt{le64\_to\_cpu},
+\index{be16_to_cpu@\texttt{be16\_to\_cpu}}\texttt{be16\_to\_cpu},
+\index{be32_to_cpu@\texttt{be32\_to\_cpu}}\texttt{be32\_to\_cpu},
+\index{be64_to_cpu@\texttt{be64\_to\_cpu}}\texttt{be64\_to\_cpu},
+\index{cpu_to_le16@\texttt{cpu\_to\_le16}}\texttt{cpu\_to\_le16},
+\index{cpu_to_le32@\texttt{cpu\_to\_le32}}\texttt{cpu\_to\_le32},
+\index{cpu_to_le64@\texttt{cpu\_to\_le64}}\texttt{cpu\_to\_le64},
+\index{cpu_to_be16@\texttt{cpu\_to\_be16}}\texttt{cpu\_to\_be16},
+\index{cpu_to_be32@\texttt{cpu\_to\_be32}}\texttt{cpu\_to\_be32},
+\index{cpu_to_be64@\texttt{cpu\_to\_be64}}\texttt{cpu\_to\_be64}.
+\end{itemize}
+
+\paragraph*{\index{linux/ip.h@\textit{linux/ip.h}}<linux/ip.h>}
+\begin{itemize}
+\item \texttt{\index{struct iphdr@\texttt{struct iphdr}}struct iphdr}~--
+representation of the IPv4 header
+\item \texttt{\index{ip_hdr@\texttt{ip\_hdr}}ip\_hdr}(\textbf{struct sk\_buff~{*}})~--
+returns a pointer to the IPv4 header
+\end{itemize}
+
+\paragraph*{\index{linux/ipv6.h@\textit{linux/ipv6.h}}<linux/ipv6.h>}
+\begin{itemize}
+\item \texttt{\index{struct ipv6hdr@\texttt{struct ipv6hdr}}struct ipv6hdr}~--
+representation of the IPv6 header
+\item \texttt{\index{ipv6_hdr@\texttt{ipv6\_hdr}}ipv6\_hdr}(\textbf{struct
+sk\_buff~{*}})~-- returns a pointer to the IPv6 header
+\end{itemize}
+
+\paragraph*{\index{linux/kernel.h@\textit{linux/kernel.h}}<linux/kernel.h>}
+\begin{itemize}
+\item \texttt{\index{NIPQUAD@\texttt{NIPQUAD}}NIPQUAD}(\textbf{uint32\_t}),
+\texttt{\index{NIPQUAD_FMT@\texttt{NIPQUAD\_FMT}}NIPQUAD\_FMT}~--
+macros to be used when dumping IPv4 addresses with \texttt{printk}
+\item \texttt{\index{NIP6@\texttt{NIP6}}NIP6}(\textbf{struct in\_addr6}),
+\texttt{NIP6\_FMT}~-- macros to be used when dumping IPv6 addresses
+with \texttt{printk}
+\end{itemize}
+
+\paragraph*{\index{linux/skbuff.h@\textit{linux/skbuff.h}}<linux/skbuff.h>}
+
+The pointers in an skb are: \texttt{head}, \texttt{data}, \texttt{tail},
+\texttt{end}. The allocated region spans head--end (not tail---odd
+naming here!), and the data region spans data--end.
+\begin{itemize}
+\item \texttt{\index{skb_clone@\texttt{skb\_clone}}skb\_clone}~-- copy
+an skb, but the data remains shared (``hardlinked'')
+\item \texttt{\index{skb_copy@\texttt{skb\_copy}}skb\_copy}~-- copy an
+skb and its data
+\item \texttt{\index{skb_copy_expand@\texttt{skb\_copy\_expand}}skb\_copy\_expand}~--
+copy an skb and its data, and additionally expand its size
+\item \texttt{\index{skb_copy_bits@\texttt{skb\_copy\_bits}}skb\_copy\_bits}~--
+scatter-gather bytes from a potentially non-linear skb and put them
+into a buffer
+\item \texttt{\index{skb_header_pointer@\texttt{skb\_header\_pointer}}skb\_header\_pointer}(\textbf{struct
+sk\_buff~{*}}\textit{skb}, \textbf{int} \textit{offset}, \textbf{int}
+\textit{length}, \textbf{void~{*}}\textit{buf})~-- returns a pointer
+to the start of the layer\nobreakdash-3 header. In case the skb is
+not linear, it will do a scatter-gather copy of the selected region
+into the provided buffer and returns \texttt{buf}. (\texttt{skb\_header\_pointer}
+can call \texttt{skb\_copy\_bits}.)
+\item \texttt{\index{skb_linearize@\texttt{skb\_linearize}}skb\_linearize}~--
+make an skb linear
+\item \texttt{\index{skb_make_writable@\texttt{skb\_make\_writable}}skb\_make\_writable}(\textbf{struct
+sk\_buff~{*}}, \textbf{unsigned int} \textit{length})~-- make the
+skb writable for the given length; required for targets; returns \texttt{NULL}
+on failure. May change the pointers inside the skb.
+\item \texttt{\index{skb_pull@\texttt{skb\_pull}}skb\_pull}(\textbf{struct
+sk\_buff~{*}}, \textbf{unsigned int} \textit{length})~-- ``pull
+\texttt{skb->data} towards the right''~--- increments \texttt{skb->data}
+by \texttt{length} and decreases \texttt{skb->len} by the same amount.
+\item \texttt{\index{skb_pull_tail@\texttt{skb\_pull\_tail}}skb\_pull\_tail}(\textbf{struct
+sk\_buff~{*}}, \textbf{unsigned int} \textit{length})~-- ``pull
+\texttt{skb->tail} towards the right''
+\item \texttt{\index{skb_push@\texttt{skb\_push}}skb\_push}(\textbf{struct
+sk\_buff~{*}}, \textbf{unsigned int} \textit{length})~-- ``push
+\texttt{skb->data} towards the left''~--- decrements \texttt{skb->data}
+pointer by \texttt{length} and increases \texttt{skb->len} by the
+same amount.
+\end{itemize}
+Once again let me recommend \citet{LinuxNetInt} which was very helpful
+in understanding the skb operations.
+
+
+\paragraph*{\index{linux/netfilter/x_tables.h@\textit{linux/netfilter/x\_tables.h}}<linux/netfilter/x\_tables.h>}
+\begin{itemize}
+\item \texttt{\index{xt_register_match@\texttt{xt\_register\_match}}\index{xt_register_matches@\texttt{xt\_register\_matches}}\index{xt_unregister_match@\texttt{xt\_unregister\_match}}\index{xt_unregister_matches@\texttt{xt\_unregister\_matches}}xt\_}(\texttt{un})\texttt{register\_match}(\texttt{es})(\textbf{struct
+xt\_match~{*}}), \texttt{xt\_}(\texttt{un})\texttt{register\_target}(\texttt{s})(\textbf{struct
+xt\_target~{*}})~-- (un)register matches/targets with the Xtables
+framework; functions return negative on failure.
+\end{itemize}
+
+\paragraph*{\index{net/ip.h@\textit{net/ip.h}}<net/ip.h>}
+\begin{itemize}
+\item \texttt{\index{ip_hdrlen@\texttt{ip\_hdrlen}}ip\_hdrlen}(\textbf{struct
+sk\_buff~{*}})~-- size of the IPv4 header in this skb. The skb must
+contain IPv4 data.
+\end{itemize}
+
+\paragraph*{\index{net/ipv6.h@\textit{net/ipv6.h}}<net/ipv6.h>}
+\begin{itemize}
+\item \texttt{\index{ipv6_addr_cmp@\texttt{ipv6\_addr\_cmp}}ipv6\_addr\_cmp}(\textbf{struct
+in6\_addr~{*}}, \textbf{struct in6\_addr~{*}})~-- compare two IPv6
+addresses for equality; returns 0 if they match.
+\item \texttt{\index{ipv6_masked_addr_cmp@\texttt{ipv6\_masked\_addr\_cmp}}ipv6\_masked\_addr\_cmp}(\textbf{struct
+in6\_addr~{*}}, \textbf{struct in6\_addr~{*}})~-- compare two IPv6
+addresses with mask; returns 0 if they match.
+\item \texttt{\index{ipv6_skip_exthdr@\texttt{ipv6\_skip\_exthdr}}}\textbf{int}
+\texttt{ipv6\_skip\_exthdr}(\textbf{struct sk\_buff~{*}}, \textbf{int}
+\textit{start}, \textbf{uint8\_t {*}}\textit{proto})~-- locate the
+start of the first non-extension header beginning at start. The protocol
+of the non-extension header that was found is stored in {*}proto,
+and the function returns the offset.
+\end{itemize}
+
+\paragraph*{\index{net/netfilter/nf_conntrack.h@\textit{net/netfilter/nf\_conntrack.h}}<net/netfilter/nf\_conntrack.h>}
+\begin{itemize}
+\item \texttt{\index{nf_ct_get@\texttt{nf\_ct\_get}}nf\_ct\_get}(\textbf{struct
+sk\_buff {*}})~-- get conntrack entry for a packet
+\item \texttt{\index{nf_ct_l3proto_try_module_get@\texttt{nf\_ct\_l3proto\_try\_module\_get}}nf\_ct\_l3proto\_try\_module\_get}(\textbf{int}
+\textit{family}), \texttt{\index{nf_ct_l3proto_module_put@\texttt{nf\_ct\_l3proto\_module\_put}}nf\_ct\_l3proto\_module\_put}(\textbf{int})~--
+request and release connection tracking module for layer\nobreakdash-3
+protocol (used by matches)
+\end{itemize}
+
+\section{Tricks and traps}
+
+
+\subsection{Use of double exclamation mark\label{sub:double-exclam}}
+
+The C programming language has three (as far as the problem described
+here is concerned) binary operations (\texttt{\&}, \texttt{|}, \texttt{\textasciicircum{}}),
+but only two logical operations (\texttt{\&\&}, \texttt{||}). Additionally,
+\texttt{false} is represented by the integer value 0, and \texttt{true}
+is represented by the integer value 1, however, all non-zero values
+also evaluate to \texttt{true}. If the binary XOR is used as a substitute
+for logical XOR, we must make sure that both operands are in the logical/boolean
+domain (0 or 1), not in the numeral domain (0..\texttt{INT\_MAX}),
+or unwanted side effects happen. Consider
+\begin{lyxcode}
+if~((foo~==~bar)~\textasciicircum{}~(flags~\&~0x80))
+\end{lyxcode}
+Assuming \texttt{foo} does equal \texttt{bar} (i.\,e.\ is \texttt{true})
+and flags does have 0x80 set (i.\,e.\ evaluates to \texttt{true}),
+the result of the binary XOR operation will be 0x81 (which also evaluates
+to \texttt{true}). Using a double negation ``\texttt{\index{double-exclamation}!!}'',
+0x80 is mapped into the logical domain (\texttt{!!0x80~= !0~= 1}),
+and so, \texttt{1~\textasciicircum{}~1} will yield 0, which evaluates
+to \texttt{false}.
+\begin{lyxcode}
+if~((foo~==~bar)~\textasciicircum{}~!!(flags~\&~0x80))
+\end{lyxcode}
+
+\section{Kernel/Xtables-addons differences}
+
+This is a list of compatibility decisions for Xtables-addons 1.27:
+\begin{itemize}
+\item Xtables-addons targets always use \texttt{struct sk\_buff~{*}{*}}
+(double indirection) as their first argument irrespective of the real
+Xtables signature, which would have been \texttt{struct sk\_buff~{*}}
+from 2.6.24 onwards.
+\item 2.6.25 introduced \texttt{NF\_INET\_} constants. Xt-a provides them
+for older kernels.
+\item 2.6.29 obsoleted \texttt{NIPQUAD\_FMT}/\texttt{NIP6\_FMT}, \texttt{NIPQUAD}/\texttt{NIP6};
+Xt-a continues to provides these, since the new printk specifiers
+\texttt{\%pI4}/\texttt{\%pI6} are not available on older kernels.\end{itemize}
+\begin{thebibliography}{Chaostables}
+\bibitem[Chaostables]{Chaostables}``Detecting and deceiving network
+scans'', Chaostables implementation document\\
+Jan Engelhardt, 2006-12-31\\
+\url{http://jengelh.medozas.de/documents/Chaostables.pdf}
+
+\bibitem[ElseHarmful]{ElseHarmful}``Else considered harmful''\\
+2011-02-07, \url{http://iq0.com/notes/deep.nesting.html}
+
+\bibitem[Git]{Git}Git (homepage)\\
+Linus Torvalds, Junio C.\ Hamano, et al.\\
+\url{http://git.or.cz/}
+
+\bibitem[GitJB]{GitJB}``How to manage patches with Git and Quilt''\\
+James Bottomley, FreedomHEC video from 2007-05-18\\
+\url{http://linuxworld.com/video/}
+
+\bibitem[LinuxNetInt]{LinuxNetInt}''Understanding Linux Network
+Internals'', by Christian Benvenuti, distributed by O'Reilly\\
+1st Edition, ISBN 0-596-00255-6, \url{http://oreilly.com/catalog/9780596002558/}
+
+\bibitem[PacketFlow]{PacketFlow}``Netfilter packet flow; hook/table
+ordering''\\
+Jan Engelhardt, graphic from 2008-02-07\\
+\url{http://jengelh.medozas.de/images/nf-packet-flow.png}
+
+\bibitem[QuiltAG]{QuiltAG}``Surviving with many patches, or, introduction
+to quilt''\\
+2005-06-12, Andreas Grünbacher\\
+\url{http://suse.de/~agruen/quilt.pdf}
+
+\bibitem[QuiltFM]{QuiltFM}Quilt Freshmeat.net page\\
+\url{http://freshmeat.net/p/quilt/}
+
+\bibitem[QuotaOnSMP]{QuotaOnSMP}``Re: Quota on SMP AGAIN''\\
+Patrick McHardy, mail from 2007-12-30\\
+\url{http://marc.info/?l=netfilter-devel&m=119903624211253&w=2}
+
+\bibitem[ReadMostly]{ReadMostly}``Re: RFC: remove \texttt{\_\_read\_mostly}''\\
+Eric Dumazet, mail from 2007-12-13\\
+\url{http://lkml.org/lkml/2007/12/13/496}
+
+\bibitem[RFC862]{RFC862}RFC 862: Echo Protocol\\
+J.\ Postel, May 1983\\
+\url{http://tools.ietf.org/html/rfc862}
+
+\bibitem[StGit]{StGit}Stacked Git, alternative to Quilt that directly
+integrates with Git\\
+Catalin Marinas\\
+\url{http://procode.org/stgit/}
+
+\end{thebibliography}
+\printindex{}
+\end{document}

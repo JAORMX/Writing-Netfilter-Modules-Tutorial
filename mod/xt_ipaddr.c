@@ -23,6 +23,7 @@ static bool ipaddr_mt(const struct sk_buff *skb, struct xt_action_param *par)
 	const struct iphdr *iph = ip_hdr(skb);
 
 	pr_info("SRC=%pI4 \n", &iph->saddr);
+	pr_info("DST=%pI4 \n", &iph->daddr);
 
 	if (info->flags & XT_IPADDR_SRC)
 		if ((iph->saddr != info->src.ip) ^
@@ -108,6 +109,9 @@ static int __init ipaddr_mt_reg(void)
 		return ret;
 	}
 	*/
+
+	pr_info("The Netfilter module has been successfully loaded...\n");
+
 	return 0;
 }
 
@@ -115,6 +119,7 @@ static void __exit ipaddr_mt_exit(void)
 {
 	xt_unregister_match(&ipaddr_mt4_reg);
 	//xt_unregister_match(&ipaddr_mt6_reg);
+	pr_info("The Netfilter module has been successfully unloaded...\n");
 }
 
 module_init(ipaddr_mt_reg);
