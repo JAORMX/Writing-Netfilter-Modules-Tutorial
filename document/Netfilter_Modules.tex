@@ -1531,7 +1531,7 @@ save and print functions that handle IPv6 addresses:
 ~~~~~~~~~~~~~~~~\textbf{if}~(addrs~==~NULL)~\\
 ~~~~~~~~~~~~~~~~~~~~~~~~xtables\_error(PARAMETER\_PROBLEM,~\textquotedbl{}xt\_ipaddr:~\textquotedbl{}~\\
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\textquotedbl{}Parse~error~at~\%s\textquotedbl{},~optarg);~\\
-~~~~~~~~~~~~~~~~memcpy(\&info->src.in6,~addrs,~\textbf{sizeof}({*}addr));~\\
+~~~~~~~~~~~~~~~~memcpy(\&info->src.in6,~addrs,~\textbf{sizeof}({*}addrs));~\\
 ~~~~~~~~~~~~~~~~\textbf{return}~true;~\\
 ~~~~~~~~\}~\\
 ~~~~~~~~\textbf{return}~false;~\\
