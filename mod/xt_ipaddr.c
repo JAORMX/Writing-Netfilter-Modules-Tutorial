@@ -61,7 +61,7 @@ static bool ipaddr_mt6(const struct sk_buff *skb,
 */
 
 /*
- * This rule checks if the added rule is valid.
+ * This function checks if the added rule is valid.
  */
 static int ipaddr_mt_check(const struct xt_mtchk_param *par)
 {
