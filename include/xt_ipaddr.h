@@ -1,6 +1,10 @@
 #ifndef _LINUX_NETFILTER_XT_IPADDR_H
 #define _LINUX_NETFILTER_XT_IPADDR_H
 
+/*
+ * Binary operations are used to be more accurate that a numerical
+ * representation.
+ */
 enum {
 	XT_IPADDR_SRC = 1 << 0,
 	XT_IPADDR_DST = 1 << 1,
