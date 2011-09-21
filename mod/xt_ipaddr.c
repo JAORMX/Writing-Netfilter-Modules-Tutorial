@@ -6,6 +6,9 @@
 
 #include "xt_ipaddr.h"
 
+/*
+ * Module information.
+ */
 MODULE_AUTHOR("Juan Antonio Osorio <jaosorior@gmail.com>");
 MODULE_DESCRIPTION("Xtables: Match source/destination address");
 MODULE_LICENSE("GPL");
