@@ -6,17 +6,14 @@
 
 #include "xt_ipaddr.h"
 
-/*
-static struct xt_match ipaddr_mt6_reg __read_mostly = {
-	.name = "ipaddr",
-	.revision = 0,
-	.family = NFPROTO_IPV6,
-	.match = ipaddr_mt6,
-	.matchsize = sizeof(struct xt_ipaddr_mtinfo),
-	.me = THIS_MODULE,
-};
-*/
+MODULE_AUTHOR("Juan Antonio Osorio <jaosorior@gmail.com>");
+MODULE_DESCRIPTION("Xtables: Match source/destination address");
+MODULE_LICENSE("GPL");
+MODULE_ALIAS("ipt_ipaddr");
 
+/*
+ * The match function
+ */
 static bool ipaddr_mt(const struct sk_buff *skb, struct xt_action_param *par)
 {
 	const struct xt_ipaddr_mtinfo *info = par->matchinfo;
@@ -60,6 +57,9 @@ static bool ipaddr_mt6(const struct sk_buff *skb,
 }
 */
 
+/*
+ * This rule checks if the added rule is valid.
+ */
 static int ipaddr_mt_check(const struct xt_mtchk_param *par)
 {
 	const struct xt_ipaddr_mtinfo *info = par->matchinfo;
@@ -78,12 +78,25 @@ static int ipaddr_mt_check(const struct xt_mtchk_param *par)
 	return 0;
 }
 
+/*
+ * This function is called when a rule is deleted.
+ */
 static void ipaddr_mt_destroy(const struct xt_mtdtor_param *par)
 {
 	const struct xt_ipaddr_mtinfo *info = par->matchinfo;
 	pr_info("Test for address %08lX removed\n", info->src.ip);
 }
 
+/*
+ * Registry information for the match checking functions.
+ * This tells Netfilter which function to use for which protocol, which, in
+ * this case is IPv4.
+ *
+ * NFPROTO_UNSPEC could also be used as a wildcard.
+ *
+ * __read_mostly is a macro that tells the kernel that this structure will be
+ * read, and so it's cached to speed the reading of the variable.
+ */
 static struct xt_match ipaddr_mt4_reg __read_mostly = {
 	.name = "ipaddr",
 	.revision = 0,
@@ -95,38 +108,47 @@ static struct xt_match ipaddr_mt4_reg __read_mostly = {
 	.me = THIS_MODULE,
 };
 
+/*
+ * This is just an example of what the structure would look like for IPv6.
 
+static struct xt_match ipaddr_mt6_reg __read_mostly = {
+	.name = "ipaddr",
+	.revision = 0,
+	.family = NFPROTO_IPV6,
+	.match = ipaddr_mt6,
+	.matchsize = sizeof(struct xt_ipaddr_mtinfo),
+	.me = THIS_MODULE,
+};
+
+*/
+
+/*
+ * The module's initialization function.
+ *
+ * Here the match structure is registered.
+ */
 static int __init ipaddr_mt_reg(void)
 {
 	int ret;
+	
 	ret = xt_register_match(&ipaddr_mt4_reg);
-	if (ret < 0)
-		return ret;
-	/*
-	ret = xt_register_match(&ipaddr_mt6_reg);
-	if (ret < 0) {
-		xt_unregister_match(&ipaddr_mt4_reg);
-		return ret;
-	}
-	*/
 
 	pr_info("The Netfilter module has been successfully loaded...\n");
 
-	return 0;
+	return ret;
 }
 
+/*
+ * The module's exit function.
+ */
 static void __exit ipaddr_mt_exit(void)
 {
 	xt_unregister_match(&ipaddr_mt4_reg);
-	//xt_unregister_match(&ipaddr_mt6_reg);
 	pr_info("The Netfilter module has been successfully unloaded...\n");
 }
 
+/*
+ * This is the module's initialization and destruction functions registration.
+ */
 module_init(ipaddr_mt_reg);
 module_exit(ipaddr_mt_exit);
-
-MODULE_AUTHOR("Juan Antonio Osorio <jaosorior@gmail.com>");
-MODULE_DESCRIPTION("Xtables: Match source/destination address");
-MODULE_LICENSE("GPL");
-MODULE_ALIAS("ipt_ipaddr");
-MODULE_ALIAS("ip6t_ipaddr");

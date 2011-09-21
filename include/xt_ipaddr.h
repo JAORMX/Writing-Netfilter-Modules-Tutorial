@@ -8,6 +8,9 @@ enum {
 	XT_IPADDR_DST_INV = 1 << 3,
 };
 
+/*
+ * This is the information to which we want to match against.
+ */
 struct xt_ipaddr_mtinfo {
 	union nf_inet_addr src, dst;
 	__u8 flags;
