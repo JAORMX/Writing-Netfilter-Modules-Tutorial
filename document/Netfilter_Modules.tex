@@ -71,7 +71,8 @@ that register against this framework. Also, depending on the feature's
 category, we write an iptables userspace module. By writing your new
 extension, you can match, mangle, track and give faith to a given
 packet or complete flows of interrelated connections. In fact, you
-can do almost everything you want in this world. Beware that a little
+can do almost everything you want in this world. Netfilter is merely a
+series of hooks in various points in a protocol stack. Beware that a little
 error in a kernel module can crash the computer.
 
 We will explain the skeletal structures of Xtables and Netfilter modules
@@ -167,7 +168,6 @@ basically indicates the API versions supported. This API version is
 decoupled from the iptables release version.
 
 \medskip{}
-
 
 Jan released a new package called \textsf{Xtables-addons} at the end
 of January 2008 that replaces the old \index{patch-o-matic@\textsf{patch-o-matic}}\textsf{patch-o-matic}(\textsf{\nobreakdash-ng})
