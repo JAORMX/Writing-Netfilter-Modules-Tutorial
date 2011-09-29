@@ -173,6 +173,7 @@ static int ipaddr_mt4_parse(int c, char **argv, int invert,
 	struct xt_ipaddr_mtinfo *info = (void *)(*match)->data;
 	struct in_addr *addrs, mask;
 	unsigned int naddrs;
+	char str[INET_ADDRSTRLEN];
 
 	switch (c) {
 		case '1': /* --ipsrc */
@@ -187,6 +188,8 @@ static int ipaddr_mt4_parse(int c, char **argv, int invert,
 				info->flags |= XT_IPADDR_SRC_INV;
 
 			xtables_ipparse_any(optarg, &addrs, &mask, &naddrs);
+			inet_ntop(AF_INET, &mask, str, INET_ADDRSTRLEN);
+			printf("OZZ => MASK = %s\n", str);
 
 			if (naddrs != 1)
 				xtables_error(PARAMETER_PROBLEM,
@@ -226,7 +229,9 @@ static int ipaddr_mt6_parse(int c, char **argv, int invert,
 		struct xt_entry_match **match)
 {
 	struct xt_ipaddr_mtinfo *info = (void *)(*match)->data;
-	struct in6_addr *addrs;
+	struct in6_addr *addrs, mask;
+	unsigned int naddrs;
+	char str[INET6_ADDRSTRLEN];
 
 	switch(c) {
 		case '1': /* --ipsrc */
@@ -240,7 +245,11 @@ static int ipaddr_mt6_parse(int c, char **argv, int invert,
 			if (invert)
 				info->flags |= XT_IPADDR_SRC_INV;
 
-			addrs = xtables_numeric_to_ip6addr(optarg);
+			//addrs = xtables_numeric_to_ip6addr(optarg);
+			xtables_ip6parse_any(optarg, &addrs, &mask, &naddrs);
+			inet_ntop(AF_INET6, &mask, str, INET6_ADDRSTRLEN);
+			printf("OZZ => MASK = %s\n", str);
+
 
 			if(addrs == NULL)
 				xtables_error(PARAMETER_PROBLEM, "xt_ipaddr: " 
